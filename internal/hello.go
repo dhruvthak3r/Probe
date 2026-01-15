@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+
+	"dhruv/probe/internal/db"
 	"time"
 )
 
@@ -17,34 +19,58 @@ type UrlQueue struct {
 }
 
 func main() {
-	var wg sync.WaitGroup
+	// var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	const workers = 3
-	wg.Add(workers)
+	// const workers = 3
+	// wg.Add(workers)
 
-	Urls := []*Urls{
-		{url: "https://google.com"},
-		{url: "https://github.com"},
-		{url: "https://stackoverflow.com"},
-		{url: "https://reddit.com"},
-		{url: "https://news.ycombinator.com"},
-		{url: "https://golang.org"},
-		{url: "https://medium.com"},
-		{url: "https://twitter.com"},
-		{url: "roadmap.sh/golang"},
-		{url: "https://linkedin.com"},
+	// Urls := []*Urls{
+	// 	{url: "https://google.com"},
+	// 	{url: "https://github.com"},
+	// 	{url: "https://stackoverflow.com"},
+	// 	{url: "https://reddit.com"},
+	// 	{url: "https://news.ycombinator.com"},
+	// 	{url: "https://golang.org"},
+	// 	{url: "https://medium.com"},
+	// 	{url: "https://twitter.com"},
+	// 	{url: "roadmap.sh/golang"},
+	// 	{url: "https://linkedin.com"},
+	// }
+
+	// urlq := NewUrlQueue()
+	// go urlq.EnqueueUrls(ctx, &wg, Urls)
+
+	// for i := 1; i <= workers; i++ {
+	// 	go urlq.DeQueueUrls(ctx, &wg)
+	// }
+
+	// wg.Wait()
+
+	db, err := db.NewConn()
+	if err != nil {
+		fmt.Printf("oops: %v\n", err)
 	}
 
-	urlq := NewUrlQueue()
-	go urlq.EnqueueUrls(ctx, &wg, Urls)
-
-	for i := 1; i <= workers; i++ {
-		go urlq.DeQueueUrls(ctx, &wg)
+	rows, err := db.QueryContext(ctx, "SELECT monitor_id,monitor_name FROM monitor")
+	if err != nil {
+		fmt.Printf("error querying %v\n", err)
 	}
+	defer rows.Close()
 
-	wg.Wait()
+	for rows.Next() {
+		var id int
+		var monitor_name string
+
+		err := rows.Scan(&id, &monitor_name)
+		if err != nil {
+			fmt.Printf("error scanning %v\n", err)
+		}
+
+		fmt.Printf("id: %d, monitor_name: %s\n", id, monitor_name)
+	}
+	defer db.Close()
 }
 
 func NewUrlQueue() *UrlQueue {
