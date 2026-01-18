@@ -9,7 +9,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func NewConn() (*sql.DB, error) {
+type DB struct {
+	Pool *sql.DB
+}
+
+func NewConnection() (*DB, error) {
 	env_err := godotenv.Load()
 	if env_err != nil {
 		fmt.Printf("Error loading .env file")
@@ -23,5 +27,5 @@ func NewConn() (*sql.DB, error) {
 	}
 
 	fmt.Println("connection est")
-	return conn, nil
+	return &DB{Pool: conn}, nil
 }

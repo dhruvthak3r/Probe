@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"dhruv/probe/internal/db"
+	"dhruv/probe/internal/monitor"
 	"fmt"
 	"net/http"
 	"sync"
-
-	"dhruv/probe/internal/db"
 	"time"
 )
 
@@ -23,6 +23,13 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	conn, err := db.NewConnection()
+	if err != nil {
+		fmt.Printf("error connecting to db: %v\n", err)
+		return
+	}
+
+	monitor.GetNextUrlsToPoll(ctx, conn)
 	// const workers = 3
 	// wg.Add(workers)
 
@@ -48,29 +55,29 @@ func main() {
 
 	// wg.Wait()
 
-	db, err := db.NewConn()
-	if err != nil {
-		fmt.Printf("oops: %v\n", err)
-	}
+	// db, err := db.NewConnection()
+	// if err != nil {
+	// 	fmt.Printf("oops: %v\n", err)
+	// }
 
-	rows, err := db.QueryContext(ctx, "SELECT monitor_id,monitor_name FROM monitor")
-	if err != nil {
-		fmt.Printf("error querying %v\n", err)
-	}
-	defer rows.Close()
+	// rows, err := db.QueryContext(ctx, "SELECT monitor_id,monitor_name FROM monitor")
+	// if err != nil {
+	// 	fmt.Printf("error querying %v\n", err)
+	// }
+	// defer rows.Close()
 
-	for rows.Next() {
-		var id int
-		var monitor_name string
+	// for rows.Next() {
+	// 	var id int
+	// 	var monitor_name string
 
-		err := rows.Scan(&id, &monitor_name)
-		if err != nil {
-			fmt.Printf("error scanning %v\n", err)
-		}
+	// 	err := rows.Scan(&id, &monitor_name)
+	// 	if err != nil {
+	// 		fmt.Printf("error scanning %v\n", err)
+	// 	}
 
-		fmt.Printf("id: %d, monitor_name: %s\n", id, monitor_name)
-	}
-	defer db.Close()
+	// 	fmt.Printf("id: %d, monitor_name: %s\n", id, monitor_name)
+	// }
+	// defer db.Close()
 }
 
 func NewUrlQueue() *UrlQueue {
@@ -109,7 +116,7 @@ func (uq *UrlQueue) DeQueueUrls(ctx context.Context, wg *sync.WaitGroup) {
 
 			if err != nil {
 				fmt.Println("error with the url", err)
-				continue
+
 			}
 
 			fmt.Println("response:", resp)
