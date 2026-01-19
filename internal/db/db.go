@@ -14,9 +14,9 @@ type DB struct {
 }
 
 func NewConnection() (*DB, error) {
-	env_err := godotenv.Load()
+	env_err := godotenv.Load("../.env")
 	if env_err != nil {
-		fmt.Printf("Error loading .env file")
+		fmt.Printf("Error loading .env file: %v\n", env_err)
 	}
 
 	password := os.Getenv("db_password")
