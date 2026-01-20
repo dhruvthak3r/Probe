@@ -2,7 +2,7 @@ package monitor
 
 import (
 	"context"
-	"dhruv/probe/internal/db"
+	db "dhruv/probe/internal/config"
 	"fmt"
 	"sync"
 	"time"
@@ -18,47 +18,67 @@ type Monitor struct {
 	HttpMethod     string
 }
 
-type UrlQueue struct {
+type MonitorQueue struct {
 	UrlsToPoll chan *Monitor
 }
 
-func GetNextUrlsToPoll(ctx context.Context, db *db.DB) {
+func NewMonitor(ID int, Url string, FrequencySecs int, LastRunAt time.Time, NextRunAt time.Time, ResponseFormat string, HttpMethod string) *Monitor {
+	return &Monitor{
+		ID:             ID,
+		Url:            Url,
+		FrequencySecs:  FrequencySecs,
+		LastRunAt:      LastRunAt,
+		NextRunAt:      NextRunAt,
+		ResponseFormat: ResponseFormat,
+		HttpMethod:     HttpMethod,
+	}
+}
 
-	query := "SELECT monitor_id, monitor_name, url FROM monitor WHERE is_active = 1 AND is_mock = 1 AND next_run_at <= now() ORDER BY next_run_at"
+func NewMonitorQueue() *MonitorQueue {
+	return &MonitorQueue{
+		UrlsToPoll: make(chan *Monitor),
+	}
+}
+
+func (uq *MonitorQueue) GetNextUrlsToPoll(ctx context.Context, wg *sync.WaitGroup, db *db.DB) error {
+	defer wg.Done()
+
+	query := "SELECT monitor_id, monitor_name, url, frequency_seconds, last_run_at, next_run_at, response_format, http_method FROM monitor WHERE is_active = 1 AND is_mock = 1 AND next_run_at <= NOW() ORDER BY next_run_at"
 	rows, err := db.Pool.QueryContext(ctx, query)
 
 	if err != nil {
-		fmt.Printf("error querying %v\n", err)
-		return
+		return fmt.Errorf("error querying %v\n", err)
 	}
 
 	defer rows.Close()
 
 	for rows.Next() {
-		var id int
-		var monitor_name string
-		var url string
-		err := rows.Scan(&id, &monitor_name, &url)
+		var ID int
+		var Url string
+		var FrequencySecs int
+		var LastRunAt time.Time
+		var NextRunAt time.Time
+		var ResponseFormat string
+		var HttpMethod string
+
+		err := rows.Scan(&ID, &Url, &FrequencySecs, &LastRunAt, &NextRunAt, &ResponseFormat, &HttpMethod)
 
 		if err != nil {
-			fmt.Printf("error scanning rows: %v\n", err)
+			return fmt.Errorf("error scanning rows: %v\n", err)
 		}
 
-		fmt.Printf("id: %d, monitor_name: %s, url: %s\n", id, monitor_name, url)
+		m := NewMonitor(ID, Url, FrequencySecs, LastRunAt, NextRunAt, ResponseFormat, HttpMethod)
 
-	}
-}
-
-func (uq *UrlQueue) EnqueueMonitors(ctx context.Context, wg *sync.WaitGroup, m []*Monitor) {
-
-	defer wg.Done()
-
-	for _, m := range m {
 		select {
 		case uq.UrlsToPoll <- m:
-			fmt.Println("monitor enqueued")
+			fmt.Println("monitor enqueued from db")
 		case <-ctx.Done():
-			fmt.Printf("oops error with context: %v\n", ctx.Err())
+			return fmt.Errorf("oops error with context: %v\n", ctx.Err())
 		}
+
 	}
+
+	close(uq.UrlsToPoll)
+
+	return nil
 }
