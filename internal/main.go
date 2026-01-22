@@ -18,7 +18,7 @@ import (
 func main() {
 	_ = godotenv.Load("../.env")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	conn, conn_err := db.NewConnection()
@@ -33,6 +33,9 @@ func main() {
 
 	g, ctx := errgroup.WithContext(ctx)
 
+	g.Go(func() error {
+		return urlq.GetNextUrlsToPoll(ctx, conn)
+	})
 	g.Go(func() error {
 		return urlq.GetNextUrlsToPoll(ctx, conn)
 	})

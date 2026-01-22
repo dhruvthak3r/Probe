@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	db "dhruv/probe/internal/config"
 	"fmt"
+	"strings"
 	//"time"
 )
 
@@ -42,14 +43,34 @@ func NewMonitorQueue() *MonitorQueue {
 
 func (mq *MonitorQueue) GetNextUrlsToPoll(ctx context.Context, db *db.DB) error {
 
-	query := "SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, http_method FROM monitor WHERE is_active = 1 AND is_mock = 1 AND next_run_at <= NOW() ORDER BY next_run_at"
-	rows, err := db.Pool.QueryContext(ctx, query)
+	tx, tx_err := db.Pool.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: false})
+
+	if tx_err != nil {
+		return fmt.Errorf("error starting transaction: %v\n", tx_err)
+	}
+
+	defer tx.Rollback()
+
+	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, http_method
+        FROM monitor 
+        WHERE is_active = 1 
+        AND is_mock = 1 
+        AND next_run_at <= NOW()
+        ORDER BY next_run_at
+        FOR UPDATE SKIP LOCKED`
+
+	rows, err := tx.QueryContext(ctx, query)
 
 	if err != nil {
 		return fmt.Errorf("error querying %v\n", err)
 	}
 
 	defer rows.Close()
+
+	var (
+		monitors []*Monitor
+		ids      []interface{}
+	)
 
 	for rows.Next() {
 		var ID int
@@ -68,13 +89,38 @@ func (mq *MonitorQueue) GetNextUrlsToPoll(ctx context.Context, db *db.DB) error 
 
 		m := NewMonitor(ID, Url, FrequencySecs, LastRunAt, NextRunAt, ResponseFormat, HttpMethod)
 
+		monitors = append(monitors, m)
+		ids = append(ids, ID)
+	}
+
+	if len(ids) > 0 {
+
+		placeholders := make([]string, len(ids))
+		for i := range ids {
+			placeholders[i] = "?"
+		}
+
+		updateq := fmt.Sprintf(`UPDATE monitor 
+                    SET last_run_at = NOW(), 
+                        next_run_at = DATE_ADD(NOW(), INTERVAL frequency_seconds SECOND) 
+                    WHERE monitor_id IN (%s)`, strings.Join(placeholders, ","))
+
+		if _, err := tx.ExecContext(ctx, updateq, ids...); err != nil {
+			return fmt.Errorf("update failed: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	for _, m := range monitors {
 		select {
 		case mq.UrlsToPoll <- m:
 			fmt.Println("monitor enqueued from db")
 		case <-ctx.Done():
 			return fmt.Errorf("oops error with enqueuing: %v\n", ctx.Err())
 		}
-
 	}
 
 	return nil
