@@ -5,32 +5,44 @@ import (
 	db "dhruv/probe/internal/config"
 	"dhruv/probe/internal/monitor"
 	"fmt"
-	"sync"
+	"log"
+
+	//"sync"
 	"time"
 
 	//"net/http"
 	"github.com/joho/godotenv"
+	"golang.org/x/sync/errgroup"
 )
-
-type Urls struct {
-	url string
-}
 
 func main() {
 	_ = godotenv.Load("../.env")
-	var wg sync.WaitGroup
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	conn, err := db.NewConnection()
-	if err != nil {
-		fmt.Printf("error connecting to db: %v\n", err)
+	conn, conn_err := db.NewConnection()
+	if conn_err != nil {
+		fmt.Printf("error connecting to db: %v\n", conn_err)
 		return
 	}
 
-	fmt.Println("db connected:", conn)
+	defer conn.Pool.Close()
 
 	urlq := monitor.NewMonitorQueue()
-	urlq.GetNextUrlsToPoll(ctx, &wg, conn)
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		return urlq.GetNextUrlsToPoll(ctx, conn)
+	})
+
+	g.Go(func() error {
+		return urlq.PollUrls(ctx)
+	})
+
+	if err := g.Wait(); err != nil {
+		log.Fatalf("service failed: %v", err)
+	}
 
 }

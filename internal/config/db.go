@@ -65,3 +65,11 @@ func NewConnection() (*DB, error) {
 		Pool: conn,
 	}, nil
 }
+
+func close(conn *DB) error {
+	if conn != nil && conn.Pool != nil {
+		return conn.Pool.Close()
+	}
+
+	return nil
+}
