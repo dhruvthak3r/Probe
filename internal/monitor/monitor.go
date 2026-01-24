@@ -55,6 +55,7 @@ func (mq *MonitorQueue) GetNextUrlsToPoll(ctx context.Context, db *db.DB) error 
         FROM monitor 
         WHERE is_active = 1 
         AND is_mock = 1 
+		AND status = 'idle'
         AND next_run_at <= NOW()
         ORDER BY next_run_at
         FOR UPDATE SKIP LOCKED`
@@ -93,6 +94,10 @@ func (mq *MonitorQueue) GetNextUrlsToPoll(ctx context.Context, db *db.DB) error 
 		ids = append(ids, ID)
 	}
 
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
 	if len(ids) > 0 {
 
 		placeholders := make([]string, len(ids))
@@ -100,10 +105,11 @@ func (mq *MonitorQueue) GetNextUrlsToPoll(ctx context.Context, db *db.DB) error 
 			placeholders[i] = "?"
 		}
 
-		updateq := fmt.Sprintf(`UPDATE monitor 
-                    SET last_run_at = NOW(), 
-                        next_run_at = DATE_ADD(NOW(), INTERVAL frequency_seconds SECOND) 
-                    WHERE monitor_id IN (%s)`, strings.Join(placeholders, ","))
+		updateq := fmt.Sprintf(`
+        UPDATE monitor
+        SET status = "running"
+        WHERE monitor_id IN (%s)
+        `, strings.Join(placeholders, ","))
 
 		if _, err := tx.ExecContext(ctx, updateq, ids...); err != nil {
 			return fmt.Errorf("update failed: %w", err)
@@ -126,10 +132,11 @@ func (mq *MonitorQueue) GetNextUrlsToPoll(ctx context.Context, db *db.DB) error 
 	return nil
 }
 
-func (mq *MonitorQueue) PollUrls(ctx context.Context) error {
+func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
+
 	for {
 		select {
-		case monitor, ok := <-mq.UrlsToPoll:
+		case m, ok := <-mq.UrlsToPoll:
 			if !ok {
 
 				return nil
@@ -137,9 +144,21 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context) error {
 
 			fmt.Printf(
 				"Polling URL: %s (Monitor ID: %d)\n",
-				monitor.Url,
-				monitor.ID,
+				m.Url,
+				m.ID,
 			)
+
+			update := `
+                UPDATE monitor
+                SET last_run_at = NOW(),
+                next_run_at = DATE_ADD(NOW(), INTERVAL ? SECOND),
+                status = 'idle'
+                WHERE monitor_id = ?`
+
+			_, err := db.Pool.ExecContext(ctx, update, m.FrequencySecs, m.ID)
+			if err != nil {
+				return fmt.Errorf("error updating monitor after poll: %v\n", err)
+			}
 
 		case <-ctx.Done():
 			return ctx.Err()

@@ -21,9 +21,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	conn, conn_err := db.NewConnection()
-	if conn_err != nil {
-		fmt.Printf("error connecting to db: %v\n", conn_err)
+	conn, err := db.NewConnection()
+	if err != nil {
+		fmt.Printf("error connecting to db: %v\n", err)
 		return
 	}
 
@@ -36,12 +36,9 @@ func main() {
 	g.Go(func() error {
 		return urlq.GetNextUrlsToPoll(ctx, conn)
 	})
-	g.Go(func() error {
-		return urlq.GetNextUrlsToPoll(ctx, conn)
-	})
 
 	g.Go(func() error {
-		return urlq.PollUrls(ctx)
+		return urlq.PollUrls(ctx, conn)
 	})
 
 	if err := g.Wait(); err != nil {
