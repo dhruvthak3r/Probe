@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/go-co-op/gocron/v2"
+
 	//"sync"
 	"time"
 
@@ -18,7 +20,7 @@ import (
 func main() {
 	_ = godotenv.Load("../.env")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	conn, err := db.NewConnection()
@@ -33,9 +35,27 @@ func main() {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		return urlq.GetNextUrlsToPoll(ctx, conn)
-	})
+	// g.Go(func() error {
+	// 	return urlq.GetNextUrlsToPoll(ctx, conn)
+	// })
+	s, err := gocron.NewScheduler()
+
+	if err != nil {
+		fmt.Printf("error creating scheduler: %v\n", err)
+	}
+
+	_, j_err := s.NewJob(
+		gocron.DurationJob(5*time.Second),
+		gocron.NewTask(
+			urlq.RunScheduler(ctx, conn),
+		),
+	)
+
+	if j_err != nil {
+		fmt.Printf("error creating job: %v\n", err)
+	}
+
+	s.Start()
 
 	g.Go(func() error {
 		return urlq.PollUrls(ctx, conn)
