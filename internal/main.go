@@ -11,7 +11,6 @@ import (
 
 	//"sync"
 	"time"
-
 	//"net/http"
 	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
@@ -35,9 +34,6 @@ func main() {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	// g.Go(func() error {
-	// 	return urlq.GetNextUrlsToPoll(ctx, conn)
-	// })
 	s, err := gocron.NewScheduler()
 
 	if err != nil {
@@ -64,5 +60,7 @@ func main() {
 	if err := g.Wait(); err != nil {
 		log.Fatalf("service failed: %v", err)
 	}
+
+	monitor.GetResults("https://roadmap.sh/golang")
 
 }
