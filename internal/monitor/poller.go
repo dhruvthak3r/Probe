@@ -5,17 +5,22 @@ import (
 	"crypto/tls"
 	db "dhruv/probe/internal/config"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptrace"
 	"time"
 )
 
-type result struct {
+type Result struct {
 	StatusCode       int
 	DNSResponseTime  time.Duration
 	ConnectionTime   time.Duration
 	TLSHandshakeTime time.Duration
 	ResolvedIp       string
+	FirstByteTime    time.Duration
+	DownloadTime     time.Duration
+	ResponseTime     time.Duration
+	Throughput       float64
 }
 
 func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
@@ -52,60 +57,101 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 	}
 }
 
-func GetResults(url string) {
+func GetResult(url string) *Result {
+	var (
+		dnsStart, dnsEnd         time.Time
+		connectStart, connectEnd time.Time
+		tlsStart, tlsEnd         time.Time
+		firstByte                time.Time
+		resolvedIP               string
+		statusCode               int
+		bytesRead                int64
+	)
+
 	trace := &httptrace.ClientTrace{
-		DNSStart: func(info httptrace.DNSStartInfo) {
-			fmt.Printf("DNS Start: %v\n", time.Now())
+		DNSStart: func(httptrace.DNSStartInfo) {
+			dnsStart = time.Now()
 		},
-		DNSDone: func(info httptrace.DNSDoneInfo) {
-			fmt.Printf("DNS Done: %v\n", info.Addrs[0].IP.String())
+		DNSDone: func(di httptrace.DNSDoneInfo) {
+			dnsEnd = time.Now()
+			if len(di.Addrs) > 0 {
+				resolvedIP = di.Addrs[0].IP.String()
+			}
 		},
 
-		ConnectStart: func(network, addr string) {
-			fmt.Printf("Connect Start: %v\n", time.Now())
+		ConnectStart: func(_, _ string) {
+			connectStart = time.Now()
 		},
-		ConnectDone: func(network, addr string, err error) {
-			fmt.Printf("Connect Done: %v\n", time.Now())
+		ConnectDone: func(_, _ string, _ error) {
+			connectEnd = time.Now()
 		},
 
 		TLSHandshakeStart: func() {
-			fmt.Printf("TLS Handshake Start: %v\n", time.Now())
+			tlsStart = time.Now()
 		},
-		TLSHandshakeDone: func(cs tls.ConnectionState, err error) {
-			fmt.Printf("TLS Handshake Done: %v\n", cs.ServerName)
-		},
-
-		GotConn: func(gci httptrace.GotConnInfo) {
-			fmt.Printf("Got Conn: %v\n", time.Now())
-		},
-
-		WroteRequest: func(wri httptrace.WroteRequestInfo) {
-			fmt.Printf("Wrote Request: %v\n", time.Now())
+		TLSHandshakeDone: func(tls.ConnectionState, error) {
+			tlsEnd = time.Now()
 		},
 
 		GotFirstResponseByte: func() {
-			fmt.Printf("Got First Response Byte: %v\n", time.Now())
+			firstByte = time.Now()
 		},
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		fmt.Printf("error creating request: %v\n", err)
-		return
+		fmt.Println("ooopss")
 	}
 
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 
+	start := time.Now()
+
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 15 * time.Second,
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("error making request: %v\n", err)
-		return
+		fmt.Println("ooopss")
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("Response status: %s\n", resp.Status)
+	statusCode = resp.StatusCode
+
+	bytesRead, err = io.Copy(io.Discard, resp.Body)
+	if err != nil {
+		fmt.Println("ooopss")
+	}
+
+	end := time.Now()
+
+	downloadTime := end.Sub(firstByte)
+
+	var throughput float64
+	if downloadTime > 0 {
+		throughput = float64(bytesRead) / downloadTime.Seconds()
+	}
+
+	return &Result{
+		StatusCode: statusCode,
+		ResolvedIp: resolvedIP,
+
+		DNSResponseTime:  durationOrZero(dnsStart, dnsEnd),
+		ConnectionTime:   durationOrZero(connectStart, connectEnd),
+		TLSHandshakeTime: durationOrZero(tlsStart, tlsEnd),
+
+		FirstByteTime: firstByte.Sub(start),
+		DownloadTime:  downloadTime,
+		ResponseTime:  end.Sub(start),
+
+		Throughput: throughput,
+	}
+}
+
+func durationOrZero(start, end time.Time) time.Duration {
+	if start.IsZero() || end.IsZero() {
+		return 0
+	}
+	return end.Sub(start)
 }

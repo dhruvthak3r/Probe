@@ -61,6 +61,6 @@ func main() {
 		log.Fatalf("service failed: %v", err)
 	}
 
-	monitor.GetResults("https://roadmap.sh/golang")
+	monitor.GetResult("https://roadmap.sh/golang")
 
 }
