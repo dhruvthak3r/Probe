@@ -61,6 +61,19 @@ func main() {
 		log.Fatalf("service failed: %v", err)
 	}
 
-	monitor.GetResult("https://roadmap.sh/golang")
+	res := monitor.GetResult("https://excalidraw.com/")
+	fmt.Println("Result:")
+	fmt.Println("StatusCode:", res.StatusCode)
+	fmt.Println("ResolvedIp:", res.ResolvedIp)
+
+	fmt.Println("DNSResponseTime:", res.DNSResponseTime)
+	fmt.Println("ConnectionTime:", res.ConnectionTime)
+	fmt.Println("TLSHandshakeTime:", res.TLSHandshakeTime)
+
+	fmt.Println("FirstByteTime:", res.FirstByteTime)
+	fmt.Println("DownloadTime:", res.DownloadTime.Microseconds())
+	fmt.Println("ResponseTime:", res.ResponseTime)
+
+	fmt.Println("Throughput (bytes/sec):", res.Throughput)
 
 }

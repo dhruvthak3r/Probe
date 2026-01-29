@@ -58,6 +58,7 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 }
 
 func GetResult(url string) *Result {
+
 	var (
 		dnsStart, dnsEnd         time.Time
 		connectStart, connectEnd time.Time
@@ -66,37 +67,10 @@ func GetResult(url string) *Result {
 		resolvedIP               string
 		statusCode               int
 		bytesRead                int64
+		throughput               float64
 	)
 
-	trace := &httptrace.ClientTrace{
-		DNSStart: func(httptrace.DNSStartInfo) {
-			dnsStart = time.Now()
-		},
-		DNSDone: func(di httptrace.DNSDoneInfo) {
-			dnsEnd = time.Now()
-			if len(di.Addrs) > 0 {
-				resolvedIP = di.Addrs[0].IP.String()
-			}
-		},
-
-		ConnectStart: func(_, _ string) {
-			connectStart = time.Now()
-		},
-		ConnectDone: func(_, _ string, _ error) {
-			connectEnd = time.Now()
-		},
-
-		TLSHandshakeStart: func() {
-			tlsStart = time.Now()
-		},
-		TLSHandshakeDone: func(tls.ConnectionState, error) {
-			tlsEnd = time.Now()
-		},
-
-		GotFirstResponseByte: func() {
-			firstByte = time.Now()
-		},
-	}
+	trace := BuildTrace(&dnsStart, &dnsEnd, &resolvedIP, &connectStart, &connectEnd, &tlsStart, &tlsEnd, &firstByte)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -107,9 +81,7 @@ func GetResult(url string) *Result {
 
 	start := time.Now()
 
-	client := &http.Client{
-		Timeout: 15 * time.Second,
-	}
+	client := &http.Client{}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -128,7 +100,6 @@ func GetResult(url string) *Result {
 
 	downloadTime := end.Sub(firstByte)
 
-	var throughput float64
 	if downloadTime > 0 {
 		throughput = float64(bytesRead) / downloadTime.Seconds()
 	}
@@ -154,4 +125,44 @@ func durationOrZero(start, end time.Time) time.Duration {
 		return 0
 	}
 	return end.Sub(start)
+}
+
+func BuildTrace(dnsStart *time.Time, dnsEnd *time.Time, resolvedIP *string, connectStart *time.Time, connectEnd *time.Time, tlsStart *time.Time, tlsEnd *time.Time, firstByte *time.Time) *httptrace.ClientTrace {
+	return &httptrace.ClientTrace{
+		DNSStart: func(httptrace.DNSStartInfo) {
+			*dnsStart = time.Now()
+		},
+		DNSDone: func(di httptrace.DNSDoneInfo) {
+			*dnsEnd = time.Now()
+
+			for _, addr := range di.Addrs {
+				if ipv4 := addr.IP.To4(); ipv4 != nil {
+					*resolvedIP = ipv4.String()
+					return
+				}
+			}
+
+			if len(di.Addrs) > 0 {
+				*resolvedIP = di.Addrs[0].IP.String()
+			}
+		},
+
+		ConnectStart: func(_, _ string) {
+			*connectStart = time.Now()
+		},
+		ConnectDone: func(_, _ string, _ error) {
+			*connectEnd = time.Now()
+		},
+
+		TLSHandshakeStart: func() {
+			*tlsStart = time.Now()
+		},
+		TLSHandshakeDone: func(tls.ConnectionState, error) {
+			*tlsEnd = time.Now()
+		},
+
+		GotFirstResponseByte: func() {
+			*firstByte = time.Now()
+		},
+	}
 }
