@@ -18,6 +18,7 @@ type Monitor struct {
 	ResponseFormat      string
 	HttpMethod          string
 	RequestHeaders      map[string]string
+	ResponseHeaders     map[string]string
 	AcceptedStatusCodes []int
 }
 
@@ -67,9 +68,14 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 		placeholders[i] = "?"
 	}
 
-	headersByMonitor, err := GetHeadersForMonitor(ctx, tx, ids, placeholders)
+	requestheadersByMonitor, err := GetRequestHeadersForMonitor(ctx, tx, ids, placeholders)
 	if err != nil {
-		return fmt.Errorf("failed getting headers..%w", err)
+		return fmt.Errorf("failed getting request headers..%w", err)
+	}
+
+	responseheadersByMonitor, err := GetResponseHeadersForMonitor(ctx, tx, ids, placeholders)
+	if err != nil {
+		return fmt.Errorf("failed getting response headers..%w", err)
 	}
 
 	acceptedCodesByMonitor, err := GetAcceptedStatusCodeForMonitor(ctx, tx, ids, placeholders)
@@ -87,9 +93,14 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 	}
 
 	for _, m := range monitors {
-		m.RequestHeaders = headersByMonitor[m.ID]
+		m.RequestHeaders = requestheadersByMonitor[m.ID]
 		if m.RequestHeaders == nil {
 			m.RequestHeaders = map[string]string{}
+		}
+
+		m.ResponseHeaders = responseheadersByMonitor[m.ID]
+		if m.ResponseHeaders == nil {
+			m.ResponseHeaders = map[string]string{}
 		}
 
 		m.AcceptedStatusCodes = acceptedCodesByMonitor[m.ID]
@@ -108,28 +119,30 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 	return nil
 }
 
-func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string]string, error) {
+func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []interface{}, placeholders []string) (map[int]map[string]string, error) {
 
-	headerQuery := fmt.Sprintf(`
-        SELECT monitor_id, name, value
-        FROM monitor_request_headers
-        WHERE monitor_id IN (%s)
-        `, strings.Join(placeholders, ","))
+	query := fmt.Sprintf(`
+		SELECT monitor_id, name, value
+		FROM %s
+		WHERE monitor_id IN (%s)
+	`,
+		table,
+		strings.Join(placeholders, ","),
+	)
 
-	headerRows, err := tx.QueryContext(ctx, headerQuery, ids...)
-
+	rows, err := tx.QueryContext(ctx, query, ids...)
 	if err != nil {
-		return nil, fmt.Errorf("failed getting headers..%w", err)
+		return nil, fmt.Errorf("failed getting headers from %s: %w", table, err)
 	}
-	defer headerRows.Close()
+	defer rows.Close()
 
 	headersByMonitor := make(map[int]map[string]string)
 
-	for headerRows.Next() {
+	for rows.Next() {
 		var monitorID int
 		var key, value string
 
-		if err := headerRows.Scan(&monitorID, &key, &value); err != nil {
+		if err := rows.Scan(&monitorID, &key, &value); err != nil {
 			return nil, err
 		}
 
@@ -140,11 +153,33 @@ func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, pl
 		headersByMonitor[monitorID][key] = value
 	}
 
-	if err := headerRows.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
 	return headersByMonitor, nil
+}
+
+func GetRequestHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string]string, error) {
+
+	return GetHeadersForMonitor(
+		ctx,
+		tx,
+		"monitor_request_headers",
+		ids,
+		placeholders,
+	)
+}
+
+func GetResponseHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string]string, error) {
+
+	return GetHeadersForMonitor(
+		ctx,
+		tx,
+		"monitor_response_headers",
+		ids,
+		placeholders,
+	)
 }
 
 func GetAcceptedStatusCodeForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int][]int, error) {

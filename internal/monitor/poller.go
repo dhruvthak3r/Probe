@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"net/textproto"
+	"strings"
 	"time"
 )
 
@@ -82,11 +84,9 @@ func GetResult(m Monitor) (*Result, error) {
 
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 
-	start := time.Now()
+	setRequestHeaders(m, req)
 
-	for key, val := range m.RequestHeaders {
-		req.Header.Set(key, val)
-	}
+	start := time.Now()
 
 	transport := &http.Transport{
 		DisableKeepAlives: true,
@@ -99,8 +99,16 @@ func GetResult(m Monitor) (*Result, error) {
 	}
 	defer resp.Body.Close()
 
+	bytesRead, err = io.Copy(io.Discard, resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading the response body %v", err)
+	}
+
+	end := time.Now()
+
 	statusCode = resp.StatusCode
-	statusValid := validateResponseStatusCode(statusCode, m.AcceptedStatusCodes)
+
+	statusValid := ValidateResponseStatusCode(statusCode, m.AcceptedStatusCodes)
 	if !statusValid {
 		return &Result{
 			StatusCode: resp.StatusCode,
@@ -108,12 +116,13 @@ func GetResult(m Monitor) (*Result, error) {
 		}, nil
 	}
 
-	bytesRead, err = io.Copy(io.Discard, resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading the response body %v", err)
+	responseheadersValid := ValidateResponseHeaders(m.ResponseHeaders, resp.Header)
+	if !responseheadersValid {
+		return &Result{
+			StatusCode: resp.StatusCode,
+			status:     "DOWN",
+		}, nil
 	}
-
-	end := time.Now()
 
 	downloadTime := end.Sub(firstByte)
 
@@ -185,7 +194,7 @@ func BuildTrace(dnsStart *time.Time, dnsEnd *time.Time, resolvedIP *string, conn
 	}
 }
 
-func validateResponseStatusCode(respStatusCode int, acceptedStatusCode []int) bool {
+func ValidateResponseStatusCode(respStatusCode int, acceptedStatusCode []int) bool {
 	for _, c := range acceptedStatusCode {
 		if c == respStatusCode {
 			return true
@@ -193,6 +202,64 @@ func validateResponseStatusCode(respStatusCode int, acceptedStatusCode []int) bo
 	}
 
 	return false
+}
+
+func ValidateResponseHeaders(expected map[string]string, respHeaders http.Header) bool {
+
+	for expectedKey, expectedVal := range expected {
+
+		canonicalKey := textproto.CanonicalMIMEHeaderKey(expectedKey)
+
+		actualValues, ok := respHeaders[canonicalKey]
+		if !ok {
+			return false
+		}
+
+		for _, actualVal := range actualValues {
+
+			actualVal = strings.TrimSpace(actualVal)
+			expectedVal = strings.TrimSpace(expectedVal)
+
+			if actualVal == expectedVal ||
+				strings.Contains(actualVal, expectedVal) {
+				goto matched
+			}
+		}
+
+		return false
+
+	matched:
+	}
+
+	return true
+}
+
+func setRequestHeaders(m Monitor, req *http.Request) {
+	for key, val := range m.RequestHeaders {
+
+		if key == "" {
+			continue
+		}
+
+		canonicalKey := textproto.CanonicalMIMEHeaderKey(key)
+		val = strings.TrimSpace(val)
+
+		switch canonicalKey {
+
+		case "Host":
+			req.Host = val
+
+		case "Content-Length", "Transfer-Encoding", "Connection":
+
+			continue
+
+		case "Cookie", "Accept", "Accept-Encoding":
+			req.Header.Add(canonicalKey, val)
+		default:
+			req.Header.Set(canonicalKey, val)
+		}
+	}
+
 }
 
 func LogResult(res *Result, url string) {
