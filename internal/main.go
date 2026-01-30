@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	db "dhruv/probe/internal/config"
+	"dhruv/probe/internal/logger"
 	"dhruv/probe/internal/monitor"
 	"fmt"
 	"log"
@@ -18,6 +19,10 @@ import (
 
 func main() {
 	_ = godotenv.Load("../.env")
+	err := logger.Init("probe-results.log")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -57,23 +62,12 @@ func main() {
 		return urlq.PollUrls(ctx, conn)
 	})
 
+	g.Go(func() error {
+		return urlq.PollUrls(ctx, conn)
+	})
+
 	if err := g.Wait(); err != nil {
 		log.Fatalf("service failed: %v", err)
 	}
-
-	res := monitor.GetResult("https://excalidraw.com/")
-	fmt.Println("Result:")
-	fmt.Println("StatusCode:", res.StatusCode)
-	fmt.Println("ResolvedIp:", res.ResolvedIp)
-
-	fmt.Println("DNSResponseTime:", res.DNSResponseTime)
-	fmt.Println("ConnectionTime:", res.ConnectionTime)
-	fmt.Println("TLSHandshakeTime:", res.TLSHandshakeTime)
-
-	fmt.Println("FirstByteTime:", res.FirstByteTime)
-	fmt.Println("DownloadTime:", res.DownloadTime.Microseconds())
-	fmt.Println("ResponseTime:", res.ResponseTime)
-
-	fmt.Println("Throughput (bytes/sec):", res.Throughput)
 
 }

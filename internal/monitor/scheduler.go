@@ -111,7 +111,7 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string]string, error) {
 
 	headerQuery := fmt.Sprintf(`
-        SELECT monitor_id, header_key, header_value
+        SELECT monitor_id, name, value
         FROM monitor_request_headers
         WHERE monitor_id IN (%s)
         `, strings.Join(placeholders, ","))

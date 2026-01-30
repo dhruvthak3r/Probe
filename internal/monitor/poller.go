@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	db "dhruv/probe/internal/config"
+	"dhruv/probe/internal/logger"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 type Result struct {
 	StatusCode       int
+	status           string
 	DNSResponseTime  time.Duration
 	ConnectionTime   time.Duration
 	TLSHandshakeTime time.Duration
@@ -32,12 +34,13 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 
 				return nil
 			}
+			res, err := GetResult(*m)
 
-			fmt.Printf(
-				"Polling URL: %s (Monitor ID: %d)\n",
-				m.Url,
-				m.ID,
-			)
+			if err != nil {
+				return fmt.Errorf("error getting results %v", err)
+			}
+
+			LogResult(res, m.Url)
 
 			update := `
                 UPDATE monitor
@@ -46,8 +49,8 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
                 status = 'idle'
                 WHERE monitor_id = ?`
 
-			_, err := db.Pool.ExecContext(ctx, update, m.FrequencySecs, m.ID)
-			if err != nil {
+			_, Execerr := db.Pool.ExecContext(ctx, update, m.FrequencySecs, m.ID)
+			if Execerr != nil {
 				return fmt.Errorf("error updating monitor after poll: %v\n", err)
 			}
 
@@ -57,7 +60,7 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 	}
 }
 
-func GetResult(url string) *Result {
+func GetResult(m Monitor) (*Result, error) {
 
 	var (
 		dnsStart, dnsEnd         time.Time
@@ -72,28 +75,42 @@ func GetResult(url string) *Result {
 
 	trace := BuildTrace(&dnsStart, &dnsEnd, &resolvedIP, &connectStart, &connectEnd, &tlsStart, &tlsEnd, &firstByte)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(m.HttpMethod, m.Url, nil)
 	if err != nil {
-		fmt.Println("ooopss")
+		return nil, fmt.Errorf("error creating the request %v\n", err)
 	}
 
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 
 	start := time.Now()
 
-	client := &http.Client{}
+	for key, val := range m.RequestHeaders {
+		req.Header.Set(key, val)
+	}
+
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+	}
+	client := &http.Client{Transport: transport}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("ooopss")
+		return nil, fmt.Errorf("error getting the response from client.Do %v", err)
 	}
 	defer resp.Body.Close()
 
 	statusCode = resp.StatusCode
+	statusValid := validateResponseStatusCode(statusCode, m.AcceptedStatusCodes)
+	if !statusValid {
+		return &Result{
+			StatusCode: resp.StatusCode,
+			status:     "DOWN",
+		}, nil
+	}
 
 	bytesRead, err = io.Copy(io.Discard, resp.Body)
 	if err != nil {
-		fmt.Println("ooopss")
+		return nil, fmt.Errorf("error reading the response body %v", err)
 	}
 
 	end := time.Now()
@@ -106,6 +123,7 @@ func GetResult(url string) *Result {
 
 	return &Result{
 		StatusCode: statusCode,
+		status:     "UP",
 		ResolvedIp: resolvedIP,
 
 		DNSResponseTime:  durationOrZero(dnsStart, dnsEnd),
@@ -117,7 +135,7 @@ func GetResult(url string) *Result {
 		ResponseTime:  end.Sub(start),
 
 		Throughput: throughput,
-	}
+	}, nil
 }
 
 func durationOrZero(start, end time.Time) time.Duration {
@@ -165,4 +183,33 @@ func BuildTrace(dnsStart *time.Time, dnsEnd *time.Time, resolvedIP *string, conn
 			*firstByte = time.Now()
 		},
 	}
+}
+
+func validateResponseStatusCode(respStatusCode int, acceptedStatusCode []int) bool {
+	for _, c := range acceptedStatusCode {
+		if c == respStatusCode {
+			return true
+		}
+	}
+
+	return false
+}
+
+func LogResult(res *Result, url string) {
+	logger.Log.Println("Result:")
+	logger.Log.Println("URL:", url)
+	logger.Log.Println("StatusCode:", res.StatusCode)
+	logger.Log.Println("Status:", res.status)
+	logger.Log.Println("ResolvedIp:", res.ResolvedIp)
+
+	logger.Log.Println("DNSResponseTime:", res.DNSResponseTime)
+	logger.Log.Println("ConnectionTime:", res.ConnectionTime)
+	logger.Log.Println("TLSHandshakeTime:", res.TLSHandshakeTime)
+
+	logger.Log.Println("FirstByteTime:", res.FirstByteTime)
+	logger.Log.Println("DownloadTime:", res.DownloadTime)
+	logger.Log.Println("ResponseTime:", res.ResponseTime)
+
+	logger.Log.Println("Throughput (bytes/sec):", res.Throughput)
+	logger.Log.Println("--------------------------------------------------")
 }
