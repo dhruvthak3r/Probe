@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	db "dhruv/probe/internal/config"
 	"dhruv/probe/internal/logger"
+
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"net/textproto"
 	"strings"
 	"time"
+	//"github.com/PaesslerAG/jsonpath"
 )
 
 type Result struct {
@@ -204,62 +206,70 @@ func ValidateResponseStatusCode(respStatusCode int, acceptedStatusCode []int) bo
 	return false
 }
 
-func ValidateResponseHeaders(expected map[string]string, respHeaders http.Header) bool {
-
-	for expectedKey, expectedVal := range expected {
+func ValidateResponseHeaders(expected map[string][]string, respHeaders http.Header) bool {
+	for expectedKey, expectedValues := range expected {
 
 		canonicalKey := textproto.CanonicalMIMEHeaderKey(expectedKey)
+		actualValues := respHeaders[canonicalKey]
 
-		actualValues, ok := respHeaders[canonicalKey]
-		if !ok {
+		if len(actualValues) == 0 {
 			return false
 		}
 
-		for _, actualVal := range actualValues {
-
-			actualVal = strings.TrimSpace(actualVal)
+		for _, expectedVal := range expectedValues {
 			expectedVal = strings.TrimSpace(expectedVal)
+			matchFound := false
 
-			if actualVal == expectedVal ||
-				strings.Contains(actualVal, expectedVal) {
-				goto matched
+			for _, actualVal := range actualValues {
+				actualVal = strings.TrimSpace(actualVal)
+
+				if actualVal == expectedVal || strings.Contains(actualVal, expectedVal) {
+					matchFound = true
+					break
+				}
+			}
+
+			if !matchFound {
+				return false
 			}
 		}
-
-		return false
-
-	matched:
 	}
 
 	return true
 }
 
 func setRequestHeaders(m Monitor, req *http.Request) {
-	for key, val := range m.RequestHeaders {
-
+	for key, values := range m.RequestHeaders {
 		if key == "" {
 			continue
 		}
 
 		canonicalKey := textproto.CanonicalMIMEHeaderKey(key)
-		val = strings.TrimSpace(val)
 
-		switch canonicalKey {
+		for _, val := range values {
+			val = strings.TrimSpace(val)
+			if val == "" {
+				continue
+			}
 
-		case "Host":
-			req.Host = val
+			switch canonicalKey {
+			case "Host":
 
-		case "Content-Length", "Transfer-Encoding", "Connection":
+				req.Host = val
 
-			continue
+			case "Content-Length", "Transfer-Encoding", "Connection":
 
-		case "Cookie", "Accept", "Accept-Encoding":
-			req.Header.Add(canonicalKey, val)
-		default:
-			req.Header.Set(canonicalKey, val)
+				continue
+
+			case "Cookie", "Set-Cookie", "Accept", "Accept-Encoding":
+
+				req.Header.Add(canonicalKey, val)
+
+			default:
+				req.Header.Add(canonicalKey, val)
+			}
 		}
 	}
-
 }
 
 func LogResult(res *Result, url string) {

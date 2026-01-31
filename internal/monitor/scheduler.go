@@ -6,7 +6,6 @@ import (
 	db "dhruv/probe/internal/config"
 	"fmt"
 	"strings"
-	//"time"
 )
 
 type Monitor struct {
@@ -17,8 +16,9 @@ type Monitor struct {
 	NextRunAt           sql.NullTime
 	ResponseFormat      string
 	HttpMethod          string
-	RequestHeaders      map[string]string
-	ResponseHeaders     map[string]string
+	RequestHeaders      map[string][]string
+	ResponseHeaders     map[string][]string
+	JsonPathExpression  []string
 	AcceptedStatusCodes []int
 }
 
@@ -83,6 +83,11 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 		return fmt.Errorf("failed getting status codes..%w", err)
 	}
 
+	jsonPathExpression, err := GetJsonPathExpression(ctx, tx, ids, placeholders)
+	if err != nil {
+		return fmt.Errorf("failed getting json path expression..%w", err)
+	}
+
 	u_err := UpdateMonitorStatus(ctx, tx, placeholders, ids)
 	if u_err != nil {
 		return fmt.Errorf("updating monitor status failed: %w", err)
@@ -95,17 +100,22 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 	for _, m := range monitors {
 		m.RequestHeaders = requestheadersByMonitor[m.ID]
 		if m.RequestHeaders == nil {
-			m.RequestHeaders = map[string]string{}
+			m.RequestHeaders = map[string][]string{}
 		}
 
 		m.ResponseHeaders = responseheadersByMonitor[m.ID]
 		if m.ResponseHeaders == nil {
-			m.ResponseHeaders = map[string]string{}
+			m.ResponseHeaders = map[string][]string{}
 		}
 
 		m.AcceptedStatusCodes = acceptedCodesByMonitor[m.ID]
 		if len(m.AcceptedStatusCodes) == 0 {
 			m.AcceptedStatusCodes = []int{200}
+		}
+
+		m.JsonPathExpression = jsonPathExpression[m.ID]
+		if len(m.JsonPathExpression) == 0 {
+			m.JsonPathExpression = []string{}
 		}
 
 		select {
@@ -119,7 +129,7 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 	return nil
 }
 
-func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []interface{}, placeholders []string) (map[int]map[string]string, error) {
+func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
 
 	query := fmt.Sprintf(`
 		SELECT monitor_id, name, value
@@ -136,7 +146,7 @@ func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []i
 	}
 	defer rows.Close()
 
-	headersByMonitor := make(map[int]map[string]string)
+	headersByMonitor := make(map[int]map[string][]string)
 
 	for rows.Next() {
 		var monitorID int
@@ -147,10 +157,10 @@ func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []i
 		}
 
 		if _, ok := headersByMonitor[monitorID]; !ok {
-			headersByMonitor[monitorID] = make(map[string]string)
+			headersByMonitor[monitorID] = make(map[string][]string)
 		}
 
-		headersByMonitor[monitorID][key] = value
+		headersByMonitor[monitorID][key] = append(headersByMonitor[monitorID][key], value)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -160,7 +170,7 @@ func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []i
 	return headersByMonitor, nil
 }
 
-func GetRequestHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string]string, error) {
+func GetRequestHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
 
 	return GetHeadersForMonitor(
 		ctx,
@@ -171,7 +181,7 @@ func GetRequestHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interfac
 	)
 }
 
-func GetResponseHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string]string, error) {
+func GetResponseHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
 
 	return GetHeadersForMonitor(
 		ctx,
@@ -211,6 +221,35 @@ func GetAcceptedStatusCodeForMonitor(ctx context.Context, tx *sql.Tx, ids []inte
 
 	return acceptedCodesByMonitor, nil
 
+}
+
+func GetJsonPathExpression(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int][]string, error) {
+	query := fmt.Sprintf(`SELECT * FROM monitor_response_json_path_expression WHERE monitor_id IN (%s)`, strings.Join(placeholders, ","))
+	jsonPathExpressionRows, err := tx.QueryContext(ctx, query, ids...)
+	if err != nil {
+
+		return nil, fmt.Errorf("failed getting json path expressions..%w", err)
+	}
+	defer jsonPathExpressionRows.Close()
+
+	jsonPathExpressions := make(map[int][]string)
+
+	for jsonPathExpressionRows.Next() {
+		var monitor_id int
+		var expression string
+
+		if err := jsonPathExpressionRows.Scan(&monitor_id, &expression); err != nil {
+			return nil, err
+		}
+
+		jsonPathExpressions[monitor_id] = append(jsonPathExpressions[monitor_id], expression)
+	}
+
+	if err = jsonPathExpressionRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return jsonPathExpressions, nil
 }
 
 func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string, ids []interface{}) error {

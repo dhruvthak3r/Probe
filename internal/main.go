@@ -7,12 +7,9 @@ import (
 	"dhruv/probe/internal/monitor"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/go-co-op/gocron/v2"
-
-	//"sync"
-	"time"
-	//"net/http"
 	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
 )
