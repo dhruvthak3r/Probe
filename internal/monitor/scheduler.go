@@ -3,9 +3,10 @@ package monitor
 import (
 	"context"
 	"database/sql"
-	db "dhruv/probe/internal/config"
 	"fmt"
 	"strings"
+
+	db "github.com/dhruvthak3r/Probe/internal/config"
 )
 
 type Monitor struct {
@@ -16,6 +17,7 @@ type Monitor struct {
 	NextRunAt           sql.NullTime
 	ResponseFormat      string
 	HttpMethod          string
+	ConnectionTimeout   sql.NullInt64
 	RequestHeaders      map[string][]string
 	ResponseHeaders     map[string][]string
 	JsonPathExpression  []string
@@ -26,15 +28,16 @@ type MonitorQueue struct {
 	UrlsToPoll chan *Monitor
 }
 
-func NewMonitor(ID int, Url string, FrequencySecs int, LastRunAt sql.NullTime, NextRunAt sql.NullTime, ResponseFormat string, HttpMethod string) *Monitor {
+func NewMonitor(ID int, Url string, FrequencySecs int, LastRunAt sql.NullTime, NextRunAt sql.NullTime, ResponseFormat string, HttpMethod string, ConnectionTimeout sql.NullInt64) *Monitor {
 	return &Monitor{
-		ID:             ID,
-		Url:            Url,
-		FrequencySecs:  FrequencySecs,
-		LastRunAt:      LastRunAt,
-		NextRunAt:      NextRunAt,
-		ResponseFormat: ResponseFormat,
-		HttpMethod:     HttpMethod,
+		ID:                ID,
+		Url:               Url,
+		FrequencySecs:     FrequencySecs,
+		LastRunAt:         LastRunAt,
+		NextRunAt:         NextRunAt,
+		ResponseFormat:    ResponseFormat,
+		HttpMethod:        HttpMethod,
+		ConnectionTimeout: ConnectionTimeout,
 	}
 }
 
@@ -83,11 +86,6 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 		return fmt.Errorf("failed getting status codes..%w", err)
 	}
 
-	jsonPathExpression, err := GetJsonPathExpression(ctx, tx, ids, placeholders)
-	if err != nil {
-		return fmt.Errorf("failed getting json path expression..%w", err)
-	}
-
 	u_err := UpdateMonitorStatus(ctx, tx, placeholders, ids)
 	if u_err != nil {
 		return fmt.Errorf("updating monitor status failed: %w", err)
@@ -111,11 +109,6 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 		m.AcceptedStatusCodes = acceptedCodesByMonitor[m.ID]
 		if len(m.AcceptedStatusCodes) == 0 {
 			m.AcceptedStatusCodes = []int{200}
-		}
-
-		m.JsonPathExpression = jsonPathExpression[m.ID]
-		if len(m.JsonPathExpression) == 0 {
-			m.JsonPathExpression = []string{}
 		}
 
 		select {
@@ -223,35 +216,6 @@ func GetAcceptedStatusCodeForMonitor(ctx context.Context, tx *sql.Tx, ids []inte
 
 }
 
-func GetJsonPathExpression(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int][]string, error) {
-	query := fmt.Sprintf(`SELECT * FROM monitor_response_json_path_expression WHERE monitor_id IN (%s)`, strings.Join(placeholders, ","))
-	jsonPathExpressionRows, err := tx.QueryContext(ctx, query, ids...)
-	if err != nil {
-
-		return nil, fmt.Errorf("failed getting json path expressions..%w", err)
-	}
-	defer jsonPathExpressionRows.Close()
-
-	jsonPathExpressions := make(map[int][]string)
-
-	for jsonPathExpressionRows.Next() {
-		var monitor_id int
-		var expression string
-
-		if err := jsonPathExpressionRows.Scan(&monitor_id, &expression); err != nil {
-			return nil, err
-		}
-
-		jsonPathExpressions[monitor_id] = append(jsonPathExpressions[monitor_id], expression)
-	}
-
-	if err = jsonPathExpressionRows.Err(); err != nil {
-		return nil, err
-	}
-
-	return jsonPathExpressions, nil
-}
-
 func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string, ids []interface{}) error {
 	updateq := fmt.Sprintf(`
         UPDATE monitor
@@ -267,7 +231,7 @@ func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string,
 }
 
 func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}, error) {
-	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, http_method
+	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, http_method,connection_timeout
         FROM monitor 
         WHERE is_active = 1 
         AND is_mock = 1 
@@ -297,14 +261,15 @@ func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}
 		var NextRunAt sql.NullTime
 		var ResponseFormat string
 		var HttpMethod string
+		var ConnectionTimeout sql.NullInt64
 
-		err := rows.Scan(&ID, &Url, &FrequencySecs, &LastRunAt, &NextRunAt, &ResponseFormat, &HttpMethod)
+		err := rows.Scan(&ID, &Url, &FrequencySecs, &LastRunAt, &NextRunAt, &ResponseFormat, &HttpMethod, &ConnectionTimeout)
 
 		if err != nil {
 			return nil, nil, fmt.Errorf("error scanning rows: %v\n", err)
 		}
 
-		m := NewMonitor(ID, Url, FrequencySecs, LastRunAt, NextRunAt, ResponseFormat, HttpMethod)
+		m := NewMonitor(ID, Url, FrequencySecs, LastRunAt, NextRunAt, ResponseFormat, HttpMethod, ConnectionTimeout)
 
 		monitors = append(monitors, m)
 		ids = append(ids, ID)

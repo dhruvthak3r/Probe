@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	db "dhruv/probe/internal/config"
-	"dhruv/probe/internal/logger"
-	"dhruv/probe/internal/monitor"
 	"fmt"
 	"log"
 	"time"
+
+	db "github.com/dhruvthak3r/Probe/internal/config"
+	"github.com/dhruvthak3r/Probe/internal/logger"
+	"github.com/dhruvthak3r/Probe/internal/monitor"
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/joho/godotenv"
@@ -15,6 +16,7 @@ import (
 )
 
 func main() {
+
 	_ = godotenv.Load("../.env")
 	err := logger.Init("probe-results.log")
 	if err != nil {
@@ -32,7 +34,7 @@ func main() {
 
 	defer conn.Pool.Close()
 
-	urlq := monitor.NewMonitorQueue()
+	monitorq := monitor.NewMonitorQueue()
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -45,7 +47,7 @@ func main() {
 	_, j_err := s.NewJob(
 		gocron.DurationJob(5*time.Second),
 		gocron.NewTask(
-			urlq.RunScheduler(ctx, conn),
+			monitorq.RunScheduler(ctx, conn),
 		),
 	)
 
@@ -56,11 +58,11 @@ func main() {
 	s.Start()
 
 	g.Go(func() error {
-		return urlq.PollUrls(ctx, conn)
+		return monitorq.PollUrls(ctx, conn)
 	})
 
 	g.Go(func() error {
-		return urlq.PollUrls(ctx, conn)
+		return monitorq.PollUrls(ctx, conn)
 	})
 
 	if err := g.Wait(); err != nil {

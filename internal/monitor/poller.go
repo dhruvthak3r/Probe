@@ -3,8 +3,10 @@ package monitor
 import (
 	"context"
 	"crypto/tls"
-	db "dhruv/probe/internal/config"
-	"dhruv/probe/internal/logger"
+	"net"
+
+	db "github.com/dhruvthak3r/Probe/internal/config"
+	"github.com/dhruvthak3r/Probe/internal/logger"
 
 	"fmt"
 	"io"
@@ -88,12 +90,21 @@ func GetResult(m Monitor) (*Result, error) {
 
 	setRequestHeaders(m, req)
 
-	start := time.Now()
-
+	const defaultConnectionTimeout = 10 * time.Second
+	dialer := &net.Dialer{
+		Timeout: defaultConnectionTimeout,
+	}
+	if m.ConnectionTimeout.Valid && m.ConnectionTimeout.Int64 > 0 {
+		dialer.Timeout = time.Duration(m.ConnectionTimeout.Int64) * time.Second
+	}
 	transport := &http.Transport{
+		DialContext:       dialer.DialContext,
 		DisableKeepAlives: true,
 	}
+
 	client := &http.Client{Transport: transport}
+
+	start := time.Now()
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -101,7 +112,7 @@ func GetResult(m Monitor) (*Result, error) {
 	}
 	defer resp.Body.Close()
 
-	bytesRead, err = io.Copy(io.Discard, resp.Body)
+	bytesRead, err = io.CopyN(io.Discard, resp.Body, 1024)
 	if err != nil {
 		return nil, fmt.Errorf("error reading the response body %v", err)
 	}

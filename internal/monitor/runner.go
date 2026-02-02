@@ -3,8 +3,9 @@ package monitor
 import (
 	//"github.com/go-co-op/gocron/v2"
 	"context"
-	db "dhruv/probe/internal/config"
 	"fmt"
+
+	db "github.com/dhruvthak3r/Probe/internal/config"
 )
 
 func (mq *MonitorQueue) RunScheduler(
