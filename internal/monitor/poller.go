@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"net"
@@ -15,7 +16,6 @@ import (
 	"net/textproto"
 	"strings"
 	"time"
-	//"github.com/PaesslerAG/jsonpath"
 )
 
 type Result struct {
@@ -57,7 +57,7 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 
 			_, Execerr := db.Pool.ExecContext(ctx, update, m.FrequencySecs, m.ID)
 			if Execerr != nil {
-				return fmt.Errorf("error updating monitor after poll: %v\n", err)
+				return fmt.Errorf("error updating monitor after poll: %v\n", Execerr)
 			}
 
 		case <-ctx.Done():
@@ -81,28 +81,16 @@ func GetResult(m Monitor) (*Result, error) {
 
 	trace := BuildTrace(&dnsStart, &dnsEnd, &resolvedIP, &connectStart, &connectEnd, &tlsStart, &tlsEnd, &firstByte)
 
-	req, err := http.NewRequest(m.HttpMethod, m.Url, nil)
+	req, err := Buildreq(m, trace)
 	if err != nil {
-		return nil, fmt.Errorf("error creating the request %v\n", err)
+		return nil, fmt.Errorf("error building the request %v", err)
 	}
 
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
-
-	setRequestHeaders(m, req)
-
-	const defaultConnectionTimeout = 10 * time.Second
-	dialer := &net.Dialer{
-		Timeout: defaultConnectionTimeout,
-	}
-	if m.ConnectionTimeout.Valid && m.ConnectionTimeout.Int64 > 0 {
-		dialer.Timeout = time.Duration(m.ConnectionTimeout.Int64) * time.Second
-	}
-	transport := &http.Transport{
-		DialContext:       dialer.DialContext,
-		DisableKeepAlives: true,
+	if m.RequestHeaders != nil {
+		setRequestHeaders(m, req)
 	}
 
-	client := &http.Client{Transport: transport}
+	client := BuildClient(m)
 
 	start := time.Now()
 
@@ -281,6 +269,48 @@ func setRequestHeaders(m Monitor, req *http.Request) {
 			}
 		}
 	}
+}
+
+func Buildreq(m Monitor, trace *httptrace.ClientTrace) (*http.Request, error) {
+	var bodyReader io.Reader
+
+	if m.HttpMethod != "GET" && m.RequestBody.Valid {
+		bodyReader = bytes.NewReader([]byte(m.RequestBody.String))
+	}
+
+	req, err := http.NewRequest(m.HttpMethod, m.Url, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("error creating the request: %w", err)
+	}
+
+	req = req.WithContext(
+		httptrace.WithClientTrace(req.Context(), trace),
+	)
+
+	if m.RequestBody.Valid {
+		req.Header.Set("Content-Type", "application/json")
+		req.ContentLength = int64(len(m.RequestBody.String))
+	}
+
+	return req, nil
+}
+
+func BuildClient(m Monitor) *http.Client {
+	const defaultConnectionTimeout = 10 * time.Second
+
+	dialer := &net.Dialer{
+		Timeout: defaultConnectionTimeout,
+	}
+	if m.ConnectionTimeout.Valid && m.ConnectionTimeout.Int64 > 0 {
+		dialer.Timeout = time.Duration(m.ConnectionTimeout.Int64) * time.Second
+	}
+
+	transport := &http.Transport{
+		DialContext:       dialer.DialContext,
+		DisableKeepAlives: true,
+	}
+
+	return &http.Client{Transport: transport}
 }
 
 func LogResult(res *Result, url string) {

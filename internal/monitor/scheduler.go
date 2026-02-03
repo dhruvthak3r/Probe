@@ -20,15 +20,15 @@ type Monitor struct {
 	ConnectionTimeout   sql.NullInt64
 	RequestHeaders      map[string][]string
 	ResponseHeaders     map[string][]string
-	JsonPathExpression  []string
 	AcceptedStatusCodes []int
+	RequestBody         sql.NullString
 }
 
 type MonitorQueue struct {
 	UrlsToPoll chan *Monitor
 }
 
-func NewMonitor(ID int, Url string, FrequencySecs int, LastRunAt sql.NullTime, NextRunAt sql.NullTime, ResponseFormat string, HttpMethod string, ConnectionTimeout sql.NullInt64) *Monitor {
+func NewMonitor(ID int, Url string, FrequencySecs int, LastRunAt sql.NullTime, NextRunAt sql.NullTime, ResponseFormat string, RequestBody sql.NullString, HttpMethod string, ConnectionTimeout sql.NullInt64) *Monitor {
 	return &Monitor{
 		ID:                ID,
 		Url:               Url,
@@ -36,6 +36,7 @@ func NewMonitor(ID int, Url string, FrequencySecs int, LastRunAt sql.NullTime, N
 		LastRunAt:         LastRunAt,
 		NextRunAt:         NextRunAt,
 		ResponseFormat:    ResponseFormat,
+		RequestBody:       RequestBody,
 		HttpMethod:        HttpMethod,
 		ConnectionTimeout: ConnectionTimeout,
 	}
@@ -231,12 +232,15 @@ func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string,
 }
 
 func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}, error) {
-	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, http_method,connection_timeout
+	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, request_body, http_method,connection_timeout
         FROM monitor 
         WHERE is_active = 1 
         AND is_mock = 1 
-		AND status = 'idle'
-        AND next_run_at <= NOW()
+		AND next_run_at <= NOW()
+		AND (
+			status = 'idle'
+			OR (status = 'running' AND next_run_at <= DATE_SUB(NOW(), INTERVAL frequency_seconds SECOND))
+		)
         ORDER BY next_run_at
         FOR UPDATE SKIP LOCKED`
 
@@ -260,16 +264,17 @@ func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}
 		var LastRunAt sql.NullTime
 		var NextRunAt sql.NullTime
 		var ResponseFormat string
+		var RequestBody sql.NullString
 		var HttpMethod string
 		var ConnectionTimeout sql.NullInt64
 
-		err := rows.Scan(&ID, &Url, &FrequencySecs, &LastRunAt, &NextRunAt, &ResponseFormat, &HttpMethod, &ConnectionTimeout)
+		err := rows.Scan(&ID, &Url, &FrequencySecs, &LastRunAt, &NextRunAt, &ResponseFormat, &RequestBody, &HttpMethod, &ConnectionTimeout)
 
 		if err != nil {
 			return nil, nil, fmt.Errorf("error scanning rows: %v\n", err)
 		}
 
-		m := NewMonitor(ID, Url, FrequencySecs, LastRunAt, NextRunAt, ResponseFormat, HttpMethod, ConnectionTimeout)
+		m := NewMonitor(ID, Url, FrequencySecs, LastRunAt, NextRunAt, ResponseFormat, RequestBody, HttpMethod, ConnectionTimeout)
 
 		monitors = append(monitors, m)
 		ids = append(ids, ID)
