@@ -10,18 +10,18 @@ import (
 )
 
 type Monitor struct {
-	ID                  int
-	Url                 string
-	FrequencySecs       int
-	LastRunAt           sql.NullTime
-	NextRunAt           sql.NullTime
-	ResponseFormat      string
-	HttpMethod          string
-	ConnectionTimeout   sql.NullInt64
-	RequestHeaders      map[string][]string
-	ResponseHeaders     map[string][]string
-	AcceptedStatusCodes []int
-	RequestBody         sql.NullString
+	ID                  int                 `json:"id"`
+	Url                 string              `json:"url"`
+	FrequencySecs       int                 `json:"frequency_secs"`
+	LastRunAt           sql.NullTime        `json:"last_run_at,omitempty"`
+	NextRunAt           sql.NullTime        `json:"next_run_at,omitempty"`
+	ResponseFormat      string              `json:"response_format"`
+	HttpMethod          string              `json:"http_method"`
+	ConnectionTimeout   sql.NullInt64       `json:"connection_timeout,omitempty"`
+	RequestHeaders      map[string][]string `json:"request_headers,omitempty"`
+	ResponseHeaders     map[string][]string `json:"response_headers,omitempty"`
+	AcceptedStatusCodes []int               `json:"accepted_status_codes,omitempty"`
+	RequestBody         sql.NullString      `json:"request_body,omitempty"`
 }
 
 type MonitorQueue struct {

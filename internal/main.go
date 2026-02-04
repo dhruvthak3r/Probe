@@ -26,7 +26,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := db.NewConnection()
+	conn, err := db.NewDBConnection()
 	if err != nil {
 		fmt.Printf("error connecting to db: %v\n", err)
 		return

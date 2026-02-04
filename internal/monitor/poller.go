@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"net"
 
 	db "github.com/dhruvthak3r/Probe/internal/config"
+	rabbitmq "github.com/dhruvthak3r/Probe/internal/config"
 	"github.com/dhruvthak3r/Probe/internal/logger"
+	"github.com/rabbitmq/amqp091-go"
 
 	"fmt"
 	"io"
@@ -19,17 +22,17 @@ import (
 )
 
 type Result struct {
-	StatusCode       int
-	status           string
-	DNSResponseTime  time.Duration
-	ConnectionTime   time.Duration
-	TLSHandshakeTime time.Duration
-	ResolvedIp       string
-	FirstByteTime    time.Duration
-	DownloadTime     time.Duration
-	ResponseTime     time.Duration
-	Throughput       float64
-	Reason           string
+	StatusCode       int           `json:"status_code"`
+	Status           string        `json:"status"`
+	DNSResponseTime  time.Duration `json:"dns_response_time,omitempty"`
+	ConnectionTime   time.Duration `json:"connection_time,omitempty"`
+	TLSHandshakeTime time.Duration `json:"tls_handshake_time,omitempty"`
+	ResolvedIp       string        `json:"resolved_ip,omitempty"`
+	FirstByteTime    time.Duration `json:"first_byte_time,omitempty"`
+	DownloadTime     time.Duration `json:"download_time,omitempty"`
+	ResponseTime     time.Duration `json:"response_time,omitempty"`
+	Throughput       float64       `json:"throughput,omitempty"`
+	Reason           string        `json:"reason,omitempty"`
 }
 
 func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
@@ -47,7 +50,35 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 				return fmt.Errorf("error getting results %v", err)
 			}
 
-			LogResult(res, m.Url)
+			conn, err := rabbitmq.NewRabbitMQConnection()
+			if err != nil {
+				return fmt.Errorf("error connecting to rabbitmq: %v", err)
+			}
+			defer conn.Close()
+
+			ch, err := rabbitmq.NewRabbitMQChannel(conn)
+			if err != nil {
+				return fmt.Errorf("error creating rabbitmq channel: %v", err)
+			}
+			defer ch.Close()
+
+			q, err := rabbitmq.NewRabbitMQQueue(ch)
+			if err != nil {
+				return fmt.Errorf("error creating rabbitmq queue: %v", err)
+			}
+
+			payload, err := json.Marshal(m)
+			if err != nil {
+				return fmt.Errorf("error marshalling monitor data: %v", err)
+			}
+
+			err = ch.PublishWithContext(ctx, "", q.Name, false, false, amqp091.Publishing{
+				ContentType: "application/json",
+				Body:        payload,
+			})
+			if err != nil {
+				return fmt.Errorf("error publishing to rabbitmq: %v", err)
+			}
 
 			update := `
                 UPDATE monitor

@@ -42,7 +42,7 @@ func (c *DBConfig) DSN() string {
 	)
 }
 
-func NewConnection() (*DB, error) {
+func NewDBConnection() (*DB, error) {
 	cfg := getDBConfig()
 
 	conn, err := sql.Open("mysql", cfg.DSN())
