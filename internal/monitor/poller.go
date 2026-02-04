@@ -29,6 +29,7 @@ type Result struct {
 	DownloadTime     time.Duration
 	ResponseTime     time.Duration
 	Throughput       float64
+	Reason           string
 }
 
 func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
@@ -96,6 +97,12 @@ func GetResult(m Monitor) (*Result, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			return &Result{
+				status: "DOWN",
+				Reason: "connection timed out",
+			}, nil
+		}
 		return nil, fmt.Errorf("error getting the response from client.Do %v", err)
 	}
 	defer resp.Body.Close()
@@ -114,6 +121,7 @@ func GetResult(m Monitor) (*Result, error) {
 		return &Result{
 			StatusCode: resp.StatusCode,
 			status:     "DOWN",
+			Reason:     fmt.Sprintf("status code %d not in accepted list", resp.StatusCode),
 		}, nil
 	}
 
@@ -122,6 +130,7 @@ func GetResult(m Monitor) (*Result, error) {
 		return &Result{
 			StatusCode: resp.StatusCode,
 			status:     "DOWN",
+			Reason:     "response headers did not match expected values",
 		}, nil
 	}
 
@@ -318,6 +327,9 @@ func LogResult(res *Result, url string) {
 	logger.Log.Println("URL:", url)
 	logger.Log.Println("StatusCode:", res.StatusCode)
 	logger.Log.Println("Status:", res.status)
+	if res.Reason != "" {
+		logger.Log.Println("Reason:", res.Reason)
+	}
 	logger.Log.Println("ResolvedIp:", res.ResolvedIp)
 
 	logger.Log.Println("DNSResponseTime:", res.DNSResponseTime)

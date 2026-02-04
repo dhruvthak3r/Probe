@@ -43,6 +43,7 @@ func NewMonitor(ID int, Url string, FrequencySecs int, LastRunAt sql.NullTime, N
 }
 
 func NewMonitorQueue() *MonitorQueue {
+
 	return &MonitorQueue{
 		UrlsToPoll: make(chan *Monitor, 100),
 	}
@@ -232,17 +233,24 @@ func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string,
 }
 
 func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}, error) {
-	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, request_body, http_method,connection_timeout
-        FROM monitor 
-        WHERE is_active = 1 
-        AND is_mock = 1 
-		AND next_run_at <= NOW()
-		AND (
-			status = 'idle'
-			OR (status = 'running' AND next_run_at <= DATE_SUB(NOW(), INTERVAL frequency_seconds SECOND))
-		)
-        ORDER BY next_run_at
-        FOR UPDATE SKIP LOCKED`
+
+	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, request_body, http_method, connection_timeout
+              FROM monitor 
+              WHERE is_active = 1 
+              AND is_mock = 1 
+              AND (
+                    status = 'idle'
+                    OR (
+                         status = 'running'
+                         AND (
+                            last_run_at IS NULL 
+                            OR last_run_at <= DATE_SUB(NOW(), INTERVAL frequency_seconds SECOND)
+                            )
+                        )
+                )
+              AND next_run_at <= NOW()
+              ORDER BY next_run_at
+              FOR UPDATE SKIP LOCKED;`
 
 	rows, err := tx.QueryContext(ctx, query)
 
