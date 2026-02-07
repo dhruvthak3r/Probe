@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	db "github.com/dhruvthak3r/Probe/internal/config"
+	db "github.com/dhruvthak3r/Probe/config"
 )
 
 func (mq *MonitorQueue) RunScheduler(

@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	db "github.com/dhruvthak3r/Probe/internal/config"
+	db "github.com/dhruvthak3r/Probe/config"
 	"github.com/dhruvthak3r/Probe/internal/logger"
 	"github.com/dhruvthak3r/Probe/internal/monitor"
 

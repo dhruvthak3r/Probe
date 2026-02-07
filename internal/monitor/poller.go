@@ -1,24 +1,15 @@
 package monitor
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
-	"net"
-
-	db "github.com/dhruvthak3r/Probe/internal/config"
-	rabbitmq "github.com/dhruvthak3r/Probe/internal/config"
-	"github.com/dhruvthak3r/Probe/internal/logger"
-	"github.com/rabbitmq/amqp091-go"
 
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptrace"
-	"net/textproto"
-	"strings"
 	"time"
+
+	db "github.com/dhruvthak3r/Probe/config"
+	"github.com/dhruvthak3r/Probe/internal/logger"
+	resultq "github.com/dhruvthak3r/Probe/internal/mq"
 )
 
 type Result struct {
@@ -50,34 +41,19 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 				return fmt.Errorf("error getting results %v", err)
 			}
 
-			conn, err := rabbitmq.NewRabbitMQConnection()
-			if err != nil {
-				return fmt.Errorf("error connecting to rabbitmq: %v", err)
-			}
-			defer conn.Close()
-
-			ch, err := rabbitmq.NewRabbitMQChannel(conn)
-			if err != nil {
-				return fmt.Errorf("error creating rabbitmq channel: %v", err)
-			}
-			defer ch.Close()
-
-			q, err := rabbitmq.NewRabbitMQQueue(ch)
-			if err != nil {
-				return fmt.Errorf("error creating rabbitmq queue: %v", err)
-			}
-
-			payload, err := json.Marshal(m)
+			payload, err := json.Marshal(res)
 			if err != nil {
 				return fmt.Errorf("error marshalling monitor data: %v", err)
 			}
 
-			err = ch.PublishWithContext(ctx, "", q.Name, false, false, amqp091.Publishing{
-				ContentType: "application/json",
-				Body:        payload,
-			})
+			err = resultq.PublishToQueue(ctx, payload)
 			if err != nil {
-				return fmt.Errorf("error publishing to rabbitmq: %v", err)
+				return fmt.Errorf("error publishing monitor data to queue: %v", err)
+			}
+
+			err = resultq.ConsumeFromQueue(ctx)
+			if err != nil {
+				return fmt.Errorf("error consuming monitor data from queue: %v", err)
 			}
 
 			update := `
@@ -98,266 +74,11 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 	}
 }
 
-func GetResult(m Monitor) (*Result, error) {
-
-	var (
-		dnsStart, dnsEnd         time.Time
-		connectStart, connectEnd time.Time
-		tlsStart, tlsEnd         time.Time
-		firstByte                time.Time
-		resolvedIP               string
-		statusCode               int
-		bytesRead                int64
-		throughput               float64
-	)
-
-	trace := BuildTrace(&dnsStart, &dnsEnd, &resolvedIP, &connectStart, &connectEnd, &tlsStart, &tlsEnd, &firstByte)
-
-	req, err := Buildreq(m, trace)
-	if err != nil {
-		return nil, fmt.Errorf("error building the request %v", err)
-	}
-
-	if m.RequestHeaders != nil {
-		setRequestHeaders(m, req)
-	}
-
-	client := BuildClient(m)
-
-	start := time.Now()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		if ne, ok := err.(net.Error); ok && ne.Timeout() {
-			return &Result{
-				status: "DOWN",
-				Reason: "connection timed out",
-			}, nil
-		}
-		return nil, fmt.Errorf("error getting the response from client.Do %v", err)
-	}
-	defer resp.Body.Close()
-
-	bytesRead, err = io.CopyN(io.Discard, resp.Body, 1024)
-	if err != nil {
-		return nil, fmt.Errorf("error reading the response body %v", err)
-	}
-
-	end := time.Now()
-
-	statusCode = resp.StatusCode
-
-	statusValid := ValidateResponseStatusCode(statusCode, m.AcceptedStatusCodes)
-	if !statusValid {
-		return &Result{
-			StatusCode: resp.StatusCode,
-			status:     "DOWN",
-			Reason:     fmt.Sprintf("status code %d not in accepted list", resp.StatusCode),
-		}, nil
-	}
-
-	responseheadersValid := ValidateResponseHeaders(m.ResponseHeaders, resp.Header)
-	if !responseheadersValid {
-		return &Result{
-			StatusCode: resp.StatusCode,
-			status:     "DOWN",
-			Reason:     "response headers did not match expected values",
-		}, nil
-	}
-
-	downloadTime := end.Sub(firstByte)
-
-	if downloadTime > 0 {
-		throughput = float64(bytesRead) / downloadTime.Seconds()
-	}
-
-	return &Result{
-		StatusCode: statusCode,
-		status:     "UP",
-		ResolvedIp: resolvedIP,
-
-		DNSResponseTime:  durationOrZero(dnsStart, dnsEnd),
-		ConnectionTime:   durationOrZero(connectStart, connectEnd),
-		TLSHandshakeTime: durationOrZero(tlsStart, tlsEnd),
-
-		FirstByteTime: firstByte.Sub(start),
-		DownloadTime:  downloadTime,
-		ResponseTime:  end.Sub(start),
-
-		Throughput: throughput,
-	}, nil
-}
-
-func durationOrZero(start, end time.Time) time.Duration {
-	if start.IsZero() || end.IsZero() {
-		return 0
-	}
-	return end.Sub(start)
-}
-
-func BuildTrace(dnsStart *time.Time, dnsEnd *time.Time, resolvedIP *string, connectStart *time.Time, connectEnd *time.Time, tlsStart *time.Time, tlsEnd *time.Time, firstByte *time.Time) *httptrace.ClientTrace {
-	return &httptrace.ClientTrace{
-		DNSStart: func(httptrace.DNSStartInfo) {
-			*dnsStart = time.Now()
-		},
-		DNSDone: func(di httptrace.DNSDoneInfo) {
-			*dnsEnd = time.Now()
-
-			for _, addr := range di.Addrs {
-				if ipv4 := addr.IP.To4(); ipv4 != nil {
-					*resolvedIP = ipv4.String()
-					return
-				}
-			}
-
-			if len(di.Addrs) > 0 {
-				*resolvedIP = di.Addrs[0].IP.String()
-			}
-		},
-
-		ConnectStart: func(_, _ string) {
-			*connectStart = time.Now()
-		},
-		ConnectDone: func(_, _ string, _ error) {
-			*connectEnd = time.Now()
-		},
-
-		TLSHandshakeStart: func() {
-			*tlsStart = time.Now()
-		},
-		TLSHandshakeDone: func(tls.ConnectionState, error) {
-			*tlsEnd = time.Now()
-		},
-
-		GotFirstResponseByte: func() {
-			*firstByte = time.Now()
-		},
-	}
-}
-
-func ValidateResponseStatusCode(respStatusCode int, acceptedStatusCode []int) bool {
-	for _, c := range acceptedStatusCode {
-		if c == respStatusCode {
-			return true
-		}
-	}
-
-	return false
-}
-
-func ValidateResponseHeaders(expected map[string][]string, respHeaders http.Header) bool {
-	for expectedKey, expectedValues := range expected {
-
-		canonicalKey := textproto.CanonicalMIMEHeaderKey(expectedKey)
-		actualValues := respHeaders[canonicalKey]
-
-		if len(actualValues) == 0 {
-			return false
-		}
-
-		for _, expectedVal := range expectedValues {
-			expectedVal = strings.TrimSpace(expectedVal)
-			matchFound := false
-
-			for _, actualVal := range actualValues {
-				actualVal = strings.TrimSpace(actualVal)
-
-				if actualVal == expectedVal || strings.Contains(actualVal, expectedVal) {
-					matchFound = true
-					break
-				}
-			}
-
-			if !matchFound {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-func setRequestHeaders(m Monitor, req *http.Request) {
-	for key, values := range m.RequestHeaders {
-		if key == "" {
-			continue
-		}
-
-		canonicalKey := textproto.CanonicalMIMEHeaderKey(key)
-
-		for _, val := range values {
-			val = strings.TrimSpace(val)
-			if val == "" {
-				continue
-			}
-
-			switch canonicalKey {
-			case "Host":
-
-				req.Host = val
-
-			case "Content-Length", "Transfer-Encoding", "Connection":
-
-				continue
-
-			case "Cookie", "Set-Cookie", "Accept", "Accept-Encoding":
-
-				req.Header.Add(canonicalKey, val)
-
-			default:
-				req.Header.Add(canonicalKey, val)
-			}
-		}
-	}
-}
-
-func Buildreq(m Monitor, trace *httptrace.ClientTrace) (*http.Request, error) {
-	var bodyReader io.Reader
-
-	if m.HttpMethod != "GET" && m.RequestBody.Valid {
-		bodyReader = bytes.NewReader([]byte(m.RequestBody.String))
-	}
-
-	req, err := http.NewRequest(m.HttpMethod, m.Url, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("error creating the request: %w", err)
-	}
-
-	req = req.WithContext(
-		httptrace.WithClientTrace(req.Context(), trace),
-	)
-
-	if m.RequestBody.Valid {
-		req.Header.Set("Content-Type", "application/json")
-		req.ContentLength = int64(len(m.RequestBody.String))
-	}
-
-	return req, nil
-}
-
-func BuildClient(m Monitor) *http.Client {
-	const defaultConnectionTimeout = 10 * time.Second
-
-	dialer := &net.Dialer{
-		Timeout: defaultConnectionTimeout,
-	}
-	if m.ConnectionTimeout.Valid && m.ConnectionTimeout.Int64 > 0 {
-		dialer.Timeout = time.Duration(m.ConnectionTimeout.Int64) * time.Second
-	}
-
-	transport := &http.Transport{
-		DialContext:       dialer.DialContext,
-		DisableKeepAlives: true,
-	}
-
-	return &http.Client{Transport: transport}
-}
-
 func LogResult(res *Result, url string) {
 	logger.Log.Println("Result:")
 	logger.Log.Println("URL:", url)
 	logger.Log.Println("StatusCode:", res.StatusCode)
-	logger.Log.Println("Status:", res.status)
+	logger.Log.Println("Status:", res.Status)
 	if res.Reason != "" {
 		logger.Log.Println("Reason:", res.Reason)
 	}
