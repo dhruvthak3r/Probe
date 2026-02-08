@@ -4,31 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dhruvthak3r/Probe/config"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Consumer struct {
 	ch    *amqp.Channel
 	queue amqp.Queue
-}
-
-func NewConsumer(rmq config.RabbitMQ) (*Consumer, error) {
-	ch, err := rmq.NewRabbitMQChannel()
-	if err != nil {
-		return nil, fmt.Errorf("error creating rabbitmq channel: %v", err)
-	}
-
-	q, err := NewRabbitMQQueue(ch)
-	if err != nil {
-		ch.Close()
-		return nil, fmt.Errorf("error creating rabbitmq queue: %v", err)
-	}
-
-	return &Consumer{
-		ch:    ch,
-		queue: q,
-	}, nil
 }
 
 func (c *Consumer) ConsumeFromQueue(ctx context.Context) error {
@@ -50,11 +31,4 @@ func (c *Consumer) ConsumeFromQueue(ctx context.Context) error {
 			return fmt.Errorf("stopping consumer %v", ctx.Err())
 		}
 	}
-}
-
-func (c *Consumer) Close() error {
-	if c == nil || c.ch == nil {
-		return nil
-	}
-	return c.ch.Close()
 }
