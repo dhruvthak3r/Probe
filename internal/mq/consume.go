@@ -5,27 +5,35 @@ import (
 	"fmt"
 
 	"github.com/dhruvthak3r/Probe/config"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func ConsumeFromQueue(ctx context.Context) error {
-	conn, err := config.NewRabbitMQConnection()
-	if err != nil {
-		return fmt.Errorf("error connecting to rabbitmq: %v", err)
-	}
-	defer conn.Close()
+type Consumer struct {
+	ch    *amqp.Channel
+	queue amqp.Queue
+}
 
-	ch, err := config.NewRabbitMQChannel(conn)
+func NewConsumer(rmq config.RabbitMQ) (*Consumer, error) {
+	ch, err := rmq.NewRabbitMQChannel()
 	if err != nil {
-		return fmt.Errorf("error creating rabbitmq channel: %v", err)
+		return nil, fmt.Errorf("error creating rabbitmq channel: %v", err)
 	}
-	defer ch.Close()
 
 	q, err := NewRabbitMQQueue(ch)
 	if err != nil {
-		return fmt.Errorf("error creating rabbitmq queue: %v", err)
+		ch.Close()
+		return nil, fmt.Errorf("error creating rabbitmq queue: %v", err)
 	}
 
-	mssgs, err := ch.Consume(q.Name, "", true, false, false, false, nil)
+	return &Consumer{
+		ch:    ch,
+		queue: q,
+	}, nil
+}
+
+func (c *Consumer) ConsumeFromQueue(ctx context.Context) error {
+
+	mssgs, err := c.ch.Consume(c.queue.Name, "", true, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("error consuming from rabbitmq: %v", err)
 	}
@@ -42,4 +50,11 @@ func ConsumeFromQueue(ctx context.Context) error {
 			return fmt.Errorf("stopping consumer %v", ctx.Err())
 		}
 	}
+}
+
+func (c *Consumer) Close() error {
+	if c == nil || c.ch == nil {
+		return nil
+	}
+	return c.ch.Close()
 }

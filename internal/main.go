@@ -6,9 +6,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/dhruvthak3r/Probe/config"
 	db "github.com/dhruvthak3r/Probe/config"
-	"github.com/dhruvthak3r/Probe/internal/logger"
+
 	"github.com/dhruvthak3r/Probe/internal/monitor"
+	"github.com/dhruvthak3r/Probe/internal/mq"
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/joho/godotenv"
@@ -18,10 +20,6 @@ import (
 func main() {
 
 	_ = godotenv.Load("../.env")
-	err := logger.Init("probe-results.log")
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -35,6 +33,27 @@ func main() {
 	defer conn.Pool.Close()
 
 	monitorq := monitor.NewMonitorQueue()
+
+	rmqconn, err := config.NewRabbitMQConnection()
+	if err != nil {
+		fmt.Printf("error connecting to rabbitmq: %v\n", err)
+		return
+	}
+	defer rmqconn.Close()
+
+	publisher, err := mq.NewRabbitMQPublisher(*rmqconn)
+	if err != nil {
+		fmt.Printf("error creating rabbitmq publisher: %v\n", err)
+		return
+	}
+	defer publisher.Close()
+
+	consumer, err := mq.NewConsumer(*rmqconn)
+	if err != nil {
+		fmt.Printf("error creating rabbitmq consumer: %v\n", err)
+		return
+	}
+	defer consumer.Close()
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -58,11 +77,14 @@ func main() {
 	s.Start()
 
 	g.Go(func() error {
-		return monitorq.PollUrls(ctx, conn)
+		return monitorq.PollUrls(ctx, conn, publisher)
 	})
 
 	g.Go(func() error {
-		return monitorq.PollUrls(ctx, conn)
+		return consumer.ConsumeFromQueue(ctx)
+	})
+	g.Go(func() error {
+		return consumer.ConsumeFromQueue(ctx)
 	})
 
 	if err := g.Wait(); err != nil {

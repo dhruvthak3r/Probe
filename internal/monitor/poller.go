@@ -8,7 +8,6 @@ import (
 	"time"
 
 	db "github.com/dhruvthak3r/Probe/config"
-	"github.com/dhruvthak3r/Probe/internal/logger"
 	resultq "github.com/dhruvthak3r/Probe/internal/mq"
 )
 
@@ -26,7 +25,7 @@ type Result struct {
 	Reason           string        `json:"reason,omitempty"`
 }
 
-func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
+func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB, rmq *resultq.Publisher) error {
 
 	for {
 		select {
@@ -46,14 +45,9 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 				return fmt.Errorf("error marshalling monitor data: %v", err)
 			}
 
-			err = resultq.PublishToQueue(ctx, payload)
+			err = rmq.PublishToQueue(ctx, payload)
 			if err != nil {
 				return fmt.Errorf("error publishing monitor data to queue: %v", err)
-			}
-
-			err = resultq.ConsumeFromQueue(ctx)
-			if err != nil {
-				return fmt.Errorf("error consuming monitor data from queue: %v", err)
 			}
 
 			update := `
@@ -72,26 +66,4 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB) error {
 			return ctx.Err()
 		}
 	}
-}
-
-func LogResult(res *Result, url string) {
-	logger.Log.Println("Result:")
-	logger.Log.Println("URL:", url)
-	logger.Log.Println("StatusCode:", res.StatusCode)
-	logger.Log.Println("Status:", res.Status)
-	if res.Reason != "" {
-		logger.Log.Println("Reason:", res.Reason)
-	}
-	logger.Log.Println("ResolvedIp:", res.ResolvedIp)
-
-	logger.Log.Println("DNSResponseTime:", res.DNSResponseTime)
-	logger.Log.Println("ConnectionTime:", res.ConnectionTime)
-	logger.Log.Println("TLSHandshakeTime:", res.TLSHandshakeTime)
-
-	logger.Log.Println("FirstByteTime:", res.FirstByteTime)
-	logger.Log.Println("DownloadTime:", res.DownloadTime)
-	logger.Log.Println("ResponseTime:", res.ResponseTime)
-
-	logger.Log.Println("Throughput (bytes/sec):", res.Throughput)
-	logger.Log.Println("--------------------------------------------------")
 }
