@@ -3,14 +3,7 @@ package mq
 import (
 	"context"
 	"fmt"
-
-	amqp "github.com/rabbitmq/amqp091-go"
 )
-
-type Consumer struct {
-	ch    *amqp.Channel
-	queue amqp.Queue
-}
 
 func (c *Consumer) ConsumeFromQueue(ctx context.Context) error {
 

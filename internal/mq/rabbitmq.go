@@ -12,6 +12,11 @@ type Publisher struct {
 	queue amqp.Queue
 }
 
+type Consumer struct {
+	ch    *amqp.Channel
+	queue amqp.Queue
+}
+
 func NewRabbitMQQueue(ch *amqp.Channel) (amqp.Queue, error) {
 	q, err := ch.QueueDeclare("monitor_results", true, false, false, false, nil)
 	if err != nil {
