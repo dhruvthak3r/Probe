@@ -13,12 +13,9 @@ type Publisher struct {
 }
 
 type Consumer struct {
-	ch     *amqp.Channel
-	queue  amqp.Queue
-	handle MessageHandler
+	ch    *amqp.Channel
+	queue amqp.Queue
 }
-
-type MessageHandler func(*ResultMessage) error
 
 func NewRabbitMQQueue(ch *amqp.Channel) (amqp.Queue, error) {
 	q, err := ch.QueueDeclare("monitor_results", true, false, false, false, nil)
@@ -53,7 +50,7 @@ func (p *Publisher) Close() error {
 	return p.ch.Close()
 }
 
-func NewConsumer(rmq config.RabbitMQ, handler MessageHandler) (*Consumer, error) {
+func NewConsumer(rmq config.RabbitMQ) (*Consumer, error) {
 	ch, err := rmq.NewRabbitMQChannel()
 	if err != nil {
 		return nil, fmt.Errorf("error creating rabbitmq channel: %v", err)
@@ -66,9 +63,8 @@ func NewConsumer(rmq config.RabbitMQ, handler MessageHandler) (*Consumer, error)
 	}
 
 	return &Consumer{
-		ch:     ch,
-		queue:  q,
-		handle: handler,
+		ch:    ch,
+		queue: q,
 	}, nil
 }
 
