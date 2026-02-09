@@ -48,7 +48,21 @@ func main() {
 	}
 	defer publisher.Close()
 
-	consumer, err := mq.NewConsumer(*rmqconn)
+	// Create handler for processing consumed messages
+	messageHandler := func(msg *mq.ResultMessage) error {
+		result := &monitor.Result{
+			MonitorID:       msg.MonitorID,
+			MonitorUrl:      msg.MonitorUrl,
+			StatusCode:      msg.StatusCode,
+			Status:          msg.Status,
+			ResolvedIp:      msg.ResolvedIP,
+			Reason:          msg.Reason,
+			Throughput:      msg.Throughput,
+		}
+		return monitor.InsertResults(ctx, conn, result)
+	}
+
+	consumer, err := mq.NewConsumer(*rmqconn, messageHandler)
 	if err != nil {
 		fmt.Printf("error creating rabbitmq consumer: %v\n", err)
 		return

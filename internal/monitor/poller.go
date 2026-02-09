@@ -8,10 +8,13 @@ import (
 	"time"
 
 	db "github.com/dhruvthak3r/Probe/config"
+
 	resultq "github.com/dhruvthak3r/Probe/internal/mq"
 )
 
 type Result struct {
+	MonitorID        int           `json:"monitor_id"`
+	MonitorUrl       string        `json:"monitor_url"`
 	StatusCode       int           `json:"status_code"`
 	Status           string        `json:"status"`
 	DNSResponseTime  time.Duration `json:"dns_response_time,omitempty"`
@@ -40,7 +43,9 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB, rmq *resultq.Pu
 				return fmt.Errorf("error getting results %v", err)
 			}
 
-			payload, err := json.Marshal(res)
+			resconv := ToResultMessage(*res)
+
+			payload, err := json.Marshal(resconv)
 			if err != nil {
 				return fmt.Errorf("error marshalling monitor data: %v", err)
 			}
@@ -65,5 +70,23 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB, rmq *resultq.Pu
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+}
+
+func ToResultMessage(res Result) *resultq.ResultMessage {
+	return &resultq.ResultMessage{
+		MonitorID:        res.MonitorID,
+		MonitorUrl:       res.MonitorUrl,
+		StatusCode:       res.StatusCode,
+		Status:           res.Status,
+		DNSResponseTime:  res.DNSResponseTime.Milliseconds(),
+		ConnectionTime:   res.ConnectionTime.Milliseconds(),
+		TLSHandshakeTime: res.TLSHandshakeTime.Milliseconds(),
+		ResolvedIP:       res.ResolvedIp,
+		FirstByteTime:    res.FirstByteTime.Milliseconds(),
+		DownloadTime:     res.DownloadTime.Milliseconds(),
+		ResponseTime:     res.ResponseTime.Milliseconds(),
+		Throughput:       res.Throughput,
+		Reason:           res.Reason,
 	}
 }

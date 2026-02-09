@@ -45,8 +45,10 @@ func GetResult(m Monitor) (*Result, error) {
 	if err != nil {
 		if ne, ok := err.(net.Error); ok && ne.Timeout() {
 			return &Result{
-				Status: "DOWN",
-				Reason: "connection timed out",
+				MonitorID:  m.ID,
+				MonitorUrl: m.Url,
+				Status:     "DOWN",
+				Reason:     "connection timed out",
 			}, nil
 		}
 		return nil, fmt.Errorf("error getting the response from client.Do %v", err)
@@ -65,6 +67,8 @@ func GetResult(m Monitor) (*Result, error) {
 	statusValid := ValidateResponseStatusCode(statusCode, m.AcceptedStatusCodes)
 	if !statusValid {
 		return &Result{
+			MonitorID:  m.ID,
+			MonitorUrl: m.Url,
 			StatusCode: resp.StatusCode,
 			Status:     "DOWN",
 			Reason:     fmt.Sprintf("status code %d not in accepted list", resp.StatusCode),
@@ -74,6 +78,8 @@ func GetResult(m Monitor) (*Result, error) {
 	responseheadersValid := ValidateResponseHeaders(m.ResponseHeaders, resp.Header)
 	if !responseheadersValid {
 		return &Result{
+			MonitorID:  m.ID,
+			MonitorUrl: m.Url,
 			StatusCode: resp.StatusCode,
 			Status:     "DOWN",
 			Reason:     "response headers did not match expected values",
@@ -87,6 +93,8 @@ func GetResult(m Monitor) (*Result, error) {
 	}
 
 	return &Result{
+		MonitorID:  m.ID,
+		MonitorUrl: m.Url,
 		StatusCode: statusCode,
 		Status:     "UP",
 		ResolvedIp: resolvedIP,
