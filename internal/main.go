@@ -81,10 +81,10 @@ func main() {
 	})
 
 	g.Go(func() error {
-		return consumer.ConsumeFromQueue(ctx)
+		return consumer.ConsumeFromQueue(ctx, conn)
 	})
 	g.Go(func() error {
-		return consumer.ConsumeFromQueue(ctx)
+		return consumer.ConsumeFromQueue(ctx, conn)
 	})
 
 	if err := g.Wait(); err != nil {
