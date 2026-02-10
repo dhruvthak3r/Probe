@@ -87,8 +87,8 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 		return fmt.Errorf("failed getting status codes..%w", err)
 	}
 
-	u_err := UpdateMonitorStatus(ctx, tx, placeholders, ids)
-	if u_err != nil {
+	err = UpdateMonitorStatus(ctx, tx, placeholders, ids)
+	if err != nil {
 		return fmt.Errorf("updating monitor status failed: %w", err)
 	}
 

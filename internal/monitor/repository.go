@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	db "github.com/dhruvthak3r/Probe/config"
 )
 
 func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
@@ -104,7 +106,8 @@ func GetAcceptedStatusCodeForMonitor(ctx context.Context, tx *sql.Tx, ids []inte
 func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string, ids []interface{}) error {
 	updateq := fmt.Sprintf(`
         UPDATE monitor
-        SET status = "running"
+        SET status = "running",
+		last_run_at = NOW()
         WHERE monitor_id IN (%s)
         `, strings.Join(placeholders, ","))
 
@@ -177,4 +180,18 @@ func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}
 
 	return monitors, ids, nil
 
+}
+
+func SetStatusToIdle(ctx context.Context, db *db.DB, m *Monitor) error {
+	update := `
+        UPDATE monitor
+        SET next_run_at = DATE_ADD(NOW(), INTERVAL ? SECOND),
+            status = 'idle'
+        WHERE monitor_id = ?`
+
+	_, err := db.Pool.ExecContext(ctx, update, m.FrequencySecs, m.ID)
+	if err != nil {
+		return fmt.Errorf("error updating monitor after poll: %w", err)
+	}
+	return nil
 }

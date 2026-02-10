@@ -29,43 +29,39 @@ type Result struct {
 }
 
 func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB, rmq *resultq.Publisher) error {
-
 	for {
 		select {
 		case m, ok := <-mq.UrlsToPoll:
 			if !ok {
-
 				return nil
 			}
-			res, err := GetResult(*m)
 
-			if err != nil {
-				return fmt.Errorf("error getting results %v", err)
-			}
+			func(m *Monitor) {
+				defer func() {
+					if err := SetStatusToIdle(ctx, db, m); err != nil {
+						fmt.Printf("error setting monitor status to idle: %v\n", err)
+					}
+				}()
 
-			resconv := ToResultMessage(*res)
+				res, err := GetResult(*m)
+				if err != nil {
+					fmt.Printf("error getting results: %v\n", err)
+					return
+				}
 
-			payload, err := json.Marshal(resconv)
-			if err != nil {
-				return fmt.Errorf("error marshalling monitor data: %v", err)
-			}
+				resconv := ToResultMessage(*res)
 
-			err = rmq.PublishToQueue(ctx, payload)
-			if err != nil {
-				return fmt.Errorf("error publishing monitor data to queue: %v", err)
-			}
+				payload, err := json.Marshal(resconv)
+				if err != nil {
+					fmt.Printf("error marshalling monitor data: %v\n", err)
+					return
+				}
 
-			update := `
-                UPDATE monitor
-                SET last_run_at = NOW(),
-                next_run_at = DATE_ADD(NOW(), INTERVAL ? SECOND),
-                status = 'idle'
-                WHERE monitor_id = ?`
-
-			_, Execerr := db.Pool.ExecContext(ctx, update, m.FrequencySecs, m.ID)
-			if Execerr != nil {
-				return fmt.Errorf("error updating monitor after poll: %v\n", Execerr)
-			}
+				if err := rmq.PublishToQueue(ctx, payload); err != nil {
+					fmt.Printf("error publishing monitor data to queue: %v\n", err)
+					return
+				}
+			}(m)
 
 		case <-ctx.Done():
 			return ctx.Err()
