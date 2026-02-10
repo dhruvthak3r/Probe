@@ -29,7 +29,10 @@ func (c *Consumer) ConsumeFromQueue(ctx context.Context, db *db.DB) error {
 				return fmt.Errorf("failed to unmarshal message body: %v", err)
 			}
 
-			InsertResults(ctx, db, &res)
+			err = InsertResults(ctx, db, &res)
+			if err != nil {
+				return fmt.Errorf("error inserting results into db: %v", err)
+			}
 
 		case <-ctx.Done():
 			return fmt.Errorf("stopping consumer %v", ctx.Err())
@@ -39,7 +42,7 @@ func (c *Consumer) ConsumeFromQueue(ctx context.Context, db *db.DB) error {
 
 func InsertResults(ctx context.Context, db *db.DB, res *ResultMessage) error {
 
-	InsertQuery := `INSERT INTO monitor_results (monitor_id, status_code, status, dns_response_time_ms, connection_time_ms, tls_handshake_time_ms, resolved_ip, first_byte_time_ms, download_time_ms, response_time_ms, throughput, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	InsertQuery := `INSERT INTO results (monitor_id, status_code, status, dns_response_time, connection_time, tls_handshake_time, resolved_ip, first_byte_time, download_time, response_time, throughput, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	values := []interface{}{
 		res.MonitorID,
