@@ -76,7 +76,7 @@ func main() {
 
 	s.Start()
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 20; i++ {
 		g.Go(func() error {
 			return monitorq.PollUrls(ctx, conn, publisher)
 		})
@@ -87,10 +87,10 @@ func main() {
 			return consumer.ConsumeFromQueue(ctx, conn)
 		})
 
-		if err := g.Wait(); err != nil {
-			log.Fatalf("service failed: %v", err)
-		}
+	}
 
+	if err := g.Wait(); err != nil {
+		log.Fatalf("service failed: %v", err)
 	}
 
 }

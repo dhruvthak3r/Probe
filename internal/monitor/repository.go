@@ -9,7 +9,7 @@ import (
 	db "github.com/dhruvthak3r/Probe/config"
 )
 
-func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
+func GetHeadersForMonitor(ctx context.Context, db *db.DB, table string, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
 
 	query := fmt.Sprintf(`
 		SELECT monitor_id, name, value
@@ -20,7 +20,7 @@ func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []i
 		strings.Join(placeholders, ","),
 	)
 
-	rows, err := tx.QueryContext(ctx, query, ids...)
+	rows, err := db.Pool.QueryContext(ctx, query, ids...)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting headers from %s: %w", table, err)
 	}
@@ -50,31 +50,31 @@ func GetHeadersForMonitor(ctx context.Context, tx *sql.Tx, table string, ids []i
 	return headersByMonitor, nil
 }
 
-func GetRequestHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
+func GetRequestHeadersForMonitor(ctx context.Context, db *db.DB, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
 
 	return GetHeadersForMonitor(
 		ctx,
-		tx,
+		db,
 		"monitor_request_headers",
 		ids,
 		placeholders,
 	)
 }
 
-func GetResponseHeadersForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
+func GetResponseHeadersForMonitor(ctx context.Context, db *db.DB, ids []interface{}, placeholders []string) (map[int]map[string][]string, error) {
 
 	return GetHeadersForMonitor(
 		ctx,
-		tx,
+		db,
 		"monitor_response_headers",
 		ids,
 		placeholders,
 	)
 }
 
-func GetAcceptedStatusCodeForMonitor(ctx context.Context, tx *sql.Tx, ids []interface{}, placeholders []string) (map[int][]int, error) {
+func GetAcceptedStatusCodeForMonitor(ctx context.Context, db *db.DB, ids []interface{}, placeholders []string) (map[int][]int, error) {
 	acceptedstatuscodesQuery := fmt.Sprintf(`SELECT monitor_id,status_code FROM monitor_accepted_status_codes WHERE monitor_id IN (%s)`, strings.Join(placeholders, ","))
-	statuscodesRows, err := tx.QueryContext(ctx, acceptedstatuscodesQuery, ids...)
+	statuscodesRows, err := db.Pool.QueryContext(ctx, acceptedstatuscodesQuery, ids...)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed getting status codes..%w", err)
@@ -121,22 +121,22 @@ func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string,
 func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}, error) {
 
 	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, request_body, http_method, connection_timeout
-              FROM monitor 
+	          FROM monitor
               WHERE is_active = 1 
               AND is_mock = 1 
               AND (
-                    status = 'idle'
-                    OR (
-                         status = 'running'
-                         AND (
-                            last_run_at IS NULL 
-                            OR last_run_at <= DATE_SUB(NOW(), INTERVAL frequency_seconds SECOND)
-                            )
-                        )
+                (status = 'idle' AND next_run_at <= NOW())
+                OR
+                (
+                  status = 'running'
+                  AND (
+                       last_run_at IS NULL 
+                       OR last_run_at <= DATE_SUB(NOW(), INTERVAL frequency_seconds * 3 SECOND)
+                   )
                 )
-              AND next_run_at <= NOW()
-              ORDER BY next_run_at
-              FOR UPDATE SKIP LOCKED;`
+             )
+            ORDER BY next_run_at
+            FOR UPDATE SKIP LOCKED;`
 
 	rows, err := tx.QueryContext(ctx, query)
 

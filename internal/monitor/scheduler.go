@@ -63,28 +63,15 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 		return fmt.Errorf("error querying next monitors :%v\n", err)
 	}
 
+	fmt.Printf("no of monitor enqueued %d\n", len(monitors))
+
 	if len(ids) == 0 {
-		return nil
+		return tx.Commit()
 	}
 
 	placeholders := make([]string, len(ids))
 	for i := range ids {
 		placeholders[i] = "?"
-	}
-
-	requestheadersByMonitor, err := GetRequestHeadersForMonitor(ctx, tx, ids, placeholders)
-	if err != nil {
-		return fmt.Errorf("failed getting request headers..%w", err)
-	}
-
-	responseheadersByMonitor, err := GetResponseHeadersForMonitor(ctx, tx, ids, placeholders)
-	if err != nil {
-		return fmt.Errorf("failed getting response headers..%w", err)
-	}
-
-	acceptedCodesByMonitor, err := GetAcceptedStatusCodeForMonitor(ctx, tx, ids, placeholders)
-	if err != nil {
-		return fmt.Errorf("failed getting status codes..%w", err)
 	}
 
 	err = UpdateMonitorStatus(ctx, tx, placeholders, ids)
@@ -94,6 +81,21 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+
+	requestheadersByMonitor, err := GetRequestHeadersForMonitor(ctx, db, ids, placeholders)
+	if err != nil {
+		return fmt.Errorf("failed getting request headers..%w", err)
+	}
+
+	responseheadersByMonitor, err := GetResponseHeadersForMonitor(ctx, db, ids, placeholders)
+	if err != nil {
+		return fmt.Errorf("failed getting response headers..%w", err)
+	}
+
+	acceptedCodesByMonitor, err := GetAcceptedStatusCodeForMonitor(ctx, db, ids, placeholders)
+	if err != nil {
+		return fmt.Errorf("failed getting status codes..%w", err)
 	}
 
 	for _, m := range monitors {
