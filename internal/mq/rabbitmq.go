@@ -4,12 +4,14 @@ import (
 	"fmt"
 
 	config "github.com/dhruvthak3r/Probe/config"
+	"github.com/rabbitmq/amqp091-go"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type Publisher struct {
-	ch    *amqp.Channel
-	queue amqp.Queue
+	ch       *amqp.Channel
+	queue    amqp.Queue
+	confirms chan amqp091.Confirmation
 }
 
 type Consumer struct {
@@ -31,6 +33,13 @@ func NewRabbitMQPublisher(rmq config.RabbitMQ) (*Publisher, error) {
 		return nil, fmt.Errorf("error creating rabbitmq channel: %v", err)
 	}
 
+	if err := ch.Confirm(false); err != nil {
+		ch.Close()
+		return nil, fmt.Errorf("error putting rabbitmq channel in confirm mode: %v", err)
+	}
+
+	confirms := ch.NotifyPublish(make(chan amqp091.Confirmation, 1000))
+
 	q, err := NewRabbitMQQueue(ch)
 	if err != nil {
 		ch.Close()
@@ -38,8 +47,9 @@ func NewRabbitMQPublisher(rmq config.RabbitMQ) (*Publisher, error) {
 	}
 
 	return &Publisher{
-		ch:    ch,
-		queue: q,
+		ch:       ch,
+		queue:    q,
+		confirms: confirms,
 	}, nil
 }
 

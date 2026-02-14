@@ -26,12 +26,23 @@ type ResultMessage struct {
 func (rmq *Publisher) PublishToQueue(ctx context.Context, payload []byte) error {
 
 	err := rmq.ch.PublishWithContext(ctx, "", rmq.queue.Name, false, false, amqp091.Publishing{
-		ContentType: "application/json",
-		Body:        payload,
+		ContentType:  "application/json",
+		Body:         payload,
+		DeliveryMode: amqp091.Persistent,
 	})
 
 	if err != nil {
-		return fmt.Errorf("error publishing to rabbitmq: %v", err)
+		return fmt.Errorf("error publishing message to rabbitmq: %v", err)
 	}
+
+	select {
+	case confirm := <-rmq.confirms:
+		if !confirm.Ack {
+			return fmt.Errorf("message not acknowledged by rabbitmq")
+		}
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled while waiting for rabbitmq confirmation: %v", ctx.Err())
+	}
+
 	return nil
 }

@@ -37,11 +37,6 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB, rmq *resultq.Pu
 			}
 
 			func(m *Monitor) {
-				defer func() {
-					if err := SetStatusToIdle(ctx, db, m); err != nil {
-						fmt.Printf("error setting monitor status to idle: %v\n", err)
-					}
-				}()
 
 				res, err := GetResult(*m)
 				if err != nil {
@@ -57,10 +52,19 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB, rmq *resultq.Pu
 					return
 				}
 
+				// if m.FrequencySecs >= 1800 {
+				// 	fmt.Printf("publishing results for %d", m.ID)
+				// }
+
 				if err := rmq.PublishToQueue(ctx, payload); err != nil {
 					fmt.Printf("error publishing monitor data to queue: %v\n", err)
 					return
 				}
+
+				if err := SetStatusToIdle(ctx, db, m); err != nil {
+					fmt.Printf("error setting monitor status to idle: %v\n", err)
+				}
+
 			}(m)
 
 		case <-ctx.Done():

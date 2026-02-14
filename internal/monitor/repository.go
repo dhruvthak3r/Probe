@@ -106,8 +106,7 @@ func GetAcceptedStatusCodeForMonitor(ctx context.Context, db *db.DB, ids []inter
 func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string, ids []interface{}) error {
 	updateq := fmt.Sprintf(`
         UPDATE monitor
-        SET status = "running",
-		last_run_at = NOW()
+        SET status = "running"
         WHERE monitor_id IN (%s)
         `, strings.Join(placeholders, ","))
 
@@ -185,7 +184,8 @@ func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}
 func SetStatusToIdle(ctx context.Context, db *db.DB, m *Monitor) error {
 	update := `
         UPDATE monitor
-        SET next_run_at = DATE_ADD(NOW(), INTERVAL ? SECOND),
+		set last_run_at = NOW(),
+        next_run_at = DATE_ADD(NOW(), INTERVAL ? SECOND),
             status = 'idle'
         WHERE monitor_id = ?`
 

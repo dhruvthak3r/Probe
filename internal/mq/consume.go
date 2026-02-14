@@ -10,7 +10,7 @@ import (
 
 func (c *Consumer) ConsumeFromQueue(ctx context.Context, db *db.DB) error {
 
-	mssgs, err := c.ch.Consume(c.queue.Name, "", true, false, false, false, nil)
+	mssgs, err := c.ch.Consume(c.queue.Name, "", false, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("error consuming from rabbitmq: %v", err)
 	}
@@ -31,7 +31,17 @@ func (c *Consumer) ConsumeFromQueue(ctx context.Context, db *db.DB) error {
 
 			err = InsertResults(ctx, db, &res)
 			if err != nil {
+
+				nack := m.Nack(false, true)
+				if nack != nil {
+					fmt.Printf("error nacking message: %v", nack)
+				}
+
 				return fmt.Errorf("error inserting results into db: %v", err)
+			}
+
+			if ack := m.Ack(false); ack != nil {
+				fmt.Printf("error acknowledging message: %v", ack)
 			}
 
 		case <-ctx.Done():

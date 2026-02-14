@@ -44,7 +44,7 @@ func NewMonitor(ID int, Url string, FrequencySecs int, LastRunAt sql.NullTime, N
 func NewMonitorQueue() *MonitorQueue {
 
 	return &MonitorQueue{
-		UrlsToPoll: make(chan *Monitor, 100),
+		UrlsToPoll: make(chan *Monitor, 2000),
 	}
 }
 
