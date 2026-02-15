@@ -63,15 +63,17 @@ func main() {
 		fmt.Printf("error creating scheduler: %v\n", err)
 	}
 
-	_, j_err := s.NewJob(
-		gocron.DurationJob(5*time.Second),
-		gocron.NewTask(
-			monitorq.RunScheduler(ctx, conn),
-		),
-	)
+	for i := 0; i < 3; i++ {
+		_, j_err := s.NewJob(
+			gocron.DurationJob(5*time.Second),
+			gocron.NewTask(
+				monitorq.RunScheduler(ctx, conn),
+			),
+		)
 
-	if j_err != nil {
-		fmt.Printf("error creating job: %v\n", err)
+		if j_err != nil {
+			fmt.Printf("error creating job: %v\n", err)
+		}
 	}
 
 	s.Start()

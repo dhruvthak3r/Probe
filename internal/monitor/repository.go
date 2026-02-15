@@ -135,6 +135,7 @@ func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}
                 )
              )
             ORDER BY next_run_at
+			LIMIT 100
             FOR UPDATE SKIP LOCKED;`
 
 	rows, err := tx.QueryContext(ctx, query)
