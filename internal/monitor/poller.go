@@ -52,10 +52,6 @@ func (mq *MonitorQueue) PollUrls(ctx context.Context, db *db.DB, rmq *resultq.Pu
 					return
 				}
 
-				// if m.FrequencySecs >= 1800 {
-				// 	fmt.Printf("publishing results for %d", m.ID)
-				// }
-
 				if err := rmq.PublishToQueue(ctx, payload); err != nil {
 					fmt.Printf("error publishing monitor data to queue: %v\n", err)
 					return

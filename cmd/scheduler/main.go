@@ -19,7 +19,7 @@ import (
 
 func main() {
 
-	_ = godotenv.Load("../.env")
+	_ = godotenv.Load()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
