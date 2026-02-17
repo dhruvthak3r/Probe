@@ -3,11 +3,9 @@ package api
 import (
 	"context"
 	"fmt"
-
-	"github.com/dhruvthak3r/Probe/api"
 )
 
-func HttpRequestWorkers(ctx context.Context, a *api.App) {
+func HttpRequestWorkers(ctx context.Context, a *App) {
 	go func() {
 		for {
 			select {
@@ -19,7 +17,7 @@ func HttpRequestWorkers(ctx context.Context, a *api.App) {
 
 				switch req.JobType {
 				case "CreateMonitor":
-					payload := req.Payload.(api.CreateMonitorPayload)
+					payload := req.Payload.(CreateMonitorPayload)
 					fmt.Printf("Processing CreateMonitor job: %+v\n", payload)
 				}
 			case <-ctx.Done():
