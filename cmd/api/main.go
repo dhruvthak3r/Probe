@@ -1,14 +1,50 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/dhruvthak3r/Probe/api"
+	db "github.com/dhruvthak3r/Probe/config"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	http.HandleFunc("/", home)
-	http.ListenAndServe(":8080", nil)
-}
+	_ = godotenv.Load()
+	conn, err := db.NewDBConnection()
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Pool.Close()
 
-func home(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello, World!"))
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	a := &api.App{
+		DB:          conn,
+		RequestChan: make(chan api.Job, 1000),
+	}
+
+	api.HttpRequestWorkers(ctx, a)
+
+	//http.HandleFunc("/", api.homeHandler)
+	http.HandleFunc("/create-monitor", a.CreateMonitorhandler)
+
+	srv := &http.Server{Addr: ":8080", Handler: nil}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("HTTP server error: %v\n", err)
+		}
+	}()
+	fmt.Println("API server running on :8080")
+
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	srv.Shutdown(shutdownCtx)
 }
