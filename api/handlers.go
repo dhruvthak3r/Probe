@@ -18,18 +18,19 @@ type App struct {
 }
 
 type CreateMonitorPayload struct {
-	Url                 string            `json:"url"`
-	FrequencySecs       int               `json:"frequency_secs"`
-	ResponseFormat      string            `json:"response_format"`
-	HttpMethod          string            `json:"http_method"`
-	ConnectionTimeout   int               `json:"connection_timeout"`
-	RequestHeaders      map[string]string `json:"request_headers"`
-	ResponseHeaders     map[string]string `json:"response_headers"`
-	AcceptedStatusCodes []int             `json:"accepted_status_codes"`
-	RequestBody         string            `json:"request_body"`
+	Name                string              `json:"name"`
+	Url                 string              `json:"url"`
+	FrequencySecs       int                 `json:"frequency_secs"`
+	ResponseFormat      string              `json:"response_format"`
+	HttpMethod          string              `json:"http_method"`
+	ConnectionTimeout   int                 `json:"connection_timeout"`
+	RequestHeaders      map[string][]string `json:"request_headers"`
+	ResponseHeaders     map[string][]string `json:"response_headers"`
+	AcceptedStatusCodes []int               `json:"accepted_status_codes"`
+	RequestBody         string              `json:"request_body"`
 }
 
-func homeHandler(w http.ResponseWriter, r *http.Request) {
+func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Welcome to the Probe API!"))
 }
 

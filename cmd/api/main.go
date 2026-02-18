@@ -32,7 +32,7 @@ func main() {
 
 	api.HttpRequestWorkers(ctx, a)
 
-	//http.HandleFunc("/", api.homeHandler)
+	http.HandleFunc("/", api.HomeHandler)
 	http.HandleFunc("/create-monitor", a.CreateMonitorhandler)
 
 	srv := &http.Server{Addr: ":8080", Handler: nil}
@@ -47,4 +47,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	srv.Shutdown(shutdownCtx)
+	fmt.Println("API server gracefully stopped")
+
 }
