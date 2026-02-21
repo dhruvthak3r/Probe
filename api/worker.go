@@ -27,6 +27,11 @@ func HttpRequestWorkers(ctx context.Context, a *App) {
 						fmt.Printf("Error inserting monitor to DB: %v\n", err)
 					}
 
+				case "UpdateMonitor":
+					payload := req.Payload.(UpdateMonitorPayload)
+					if err := UpdateMonitorInDB(ctx, a.DB, payload); err != nil {
+						fmt.Printf("Error updating monitor in DB: %v\n", err)
+					}
 				}
 			case <-ctx.Done():
 				fmt.Println("Context cancelled, stopping workers")
@@ -138,4 +143,109 @@ func InsertAcceptedStatusCodes(ctx context.Context, tx *sql.Tx, newMonitorID int
 
 	}
 	return nil
+}
+
+func UpdateMonitorInDB(ctx context.Context, db *config.DB, payload UpdateMonitorPayload) error {
+	tx, err := db.Pool.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: false})
+	if err != nil {
+		return fmt.Errorf("error starting transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	setParts := make([]string, 0, 8)
+	args := make([]interface{}, 0, 9)
+
+	if payload.Name != nil {
+		setParts = append(setParts, "monitor_name = ?")
+		args = append(args, *payload.Name)
+	}
+	if payload.Url != nil {
+		setParts = append(setParts, "url = ?")
+		args = append(args, *payload.Url)
+	}
+	if payload.FrequencySecs != nil {
+		setParts = append(setParts, "frequency_seconds = ?")
+		args = append(args, *payload.FrequencySecs)
+	}
+	if payload.ResponseFormat != nil {
+		setParts = append(setParts, "response_format = ?")
+		args = append(args, *payload.ResponseFormat)
+	}
+	if payload.HttpMethod != nil {
+		setParts = append(setParts, "http_method = ?")
+		args = append(args, *payload.HttpMethod)
+	}
+	if payload.ConnectionTimeout != nil {
+		setParts = append(setParts, "connection_timeout = ?")
+		args = append(args, *payload.ConnectionTimeout)
+	}
+	if payload.RequestBody != nil {
+		setParts = append(setParts, "request_body = ?")
+		args = append(args, *payload.RequestBody)
+	}
+
+	if len(setParts) > 0 {
+		query := fmt.Sprintf("UPDATE monitor SET %s WHERE monitor_id = ?", strings.Join(setParts, ", "))
+		args = append(args, payload.MonitorID)
+		res, err := tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("error updating monitor fields: %v", err)
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("error checking updated rows: %v", err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("monitor not found for monitor_id=%d", payload.MonitorID)
+		}
+	}
+
+	if payload.RequestHeaders != nil {
+		if err := ReplaceHeaders(ctx, tx, int64(payload.MonitorID), *payload.RequestHeaders, "monitor_request_headers"); err != nil {
+			return err
+		}
+	}
+
+	if payload.ResponseHeaders != nil {
+		if err := ReplaceHeaders(ctx, tx, int64(payload.MonitorID), *payload.ResponseHeaders, "monitor_response_headers"); err != nil {
+			return err
+		}
+	}
+
+	if payload.AcceptedStatusCodes != nil {
+		if err := ReplaceAcceptedStatusCodes(ctx, tx, int64(payload.MonitorID), *payload.AcceptedStatusCodes); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("error committing update transaction: %v", err)
+	}
+
+	return nil
+}
+
+func ReplaceHeaders(ctx context.Context, tx *sql.Tx, monitorID int64, headers map[string][]string, tableName string) error {
+	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE monitor_id = ?", tableName)
+	if _, err := tx.ExecContext(ctx, deleteQuery, monitorID); err != nil {
+		return fmt.Errorf("error deleting existing headers from %s: %v", tableName, err)
+	}
+
+	if len(headers) == 0 {
+		return nil
+	}
+
+	return InsertHeaders(ctx, tx, monitorID, headers, tableName)
+}
+
+func ReplaceAcceptedStatusCodes(ctx context.Context, tx *sql.Tx, monitorID int64, codes []int) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM monitor_accepted_status_codes WHERE monitor_id = ?", monitorID); err != nil {
+		return fmt.Errorf("error deleting existing accepted status codes: %v", err)
+	}
+
+	if len(codes) == 0 {
+		codes = []int{200}
+	}
+
+	return InsertAcceptedStatusCodes(ctx, tx, monitorID, codes)
 }

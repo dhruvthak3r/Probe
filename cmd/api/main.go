@@ -36,6 +36,7 @@ func main() {
 
 	http.HandleFunc("/", api.HomeHandler)
 	http.HandleFunc("/create-monitor", a.CreateMonitorhandler)
+	http.HandleFunc("/update-monitor", a.UpdateMonitorHandler)
 
 	srv := &http.Server{Addr: ":8080", Handler: nil}
 	go func() {
