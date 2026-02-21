@@ -22,7 +22,7 @@ func HttpRequestWorkers(ctx context.Context, a *App) {
 				switch req.JobType {
 				case "CreateMonitor":
 					payload := req.Payload.(CreateMonitorPayload)
-
+					fmt.Println("inserting into db")
 					if err := InsertMonitorToDB(ctx, a.DB, payload); err != nil {
 						fmt.Printf("Error inserting monitor to DB: %v\n", err)
 					}

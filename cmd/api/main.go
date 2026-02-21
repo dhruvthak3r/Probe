@@ -27,10 +27,12 @@ func main() {
 
 	a := &api.App{
 		DB:          conn,
-		RequestChan: make(chan api.Job, 1000),
+		RequestChan: make(chan api.Job, 10000),
 	}
 
-	api.HttpRequestWorkers(ctx, a)
+	for i := 0; i < 100; i++ {
+		api.HttpRequestWorkers(ctx, a)
+	}
 
 	http.HandleFunc("/", api.HomeHandler)
 	http.HandleFunc("/create-monitor", a.CreateMonitorhandler)

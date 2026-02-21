@@ -50,10 +50,10 @@ func NewDBConnection() (*DB, error) {
 		return nil, err
 	}
 
-	conn.SetMaxOpenConns(5)
-	conn.SetMaxIdleConns(5)
-	conn.SetConnMaxLifetime(5 * time.Minute)
-	conn.SetConnMaxIdleTime(3 * time.Minute)
+	conn.SetMaxOpenConns(50)
+	conn.SetMaxIdleConns(25)
+	conn.SetConnMaxLifetime(10 * time.Minute)
+	conn.SetConnMaxIdleTime(5 * time.Minute)
 
 	if err := conn.Ping(); err != nil {
 		return nil, err
