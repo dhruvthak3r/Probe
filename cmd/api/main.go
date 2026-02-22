@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dhruvthak3r/Probe/api"
+	handlers "github.com/dhruvthak3r/Probe/api"
 	db "github.com/dhruvthak3r/Probe/config"
 	"github.com/joho/godotenv"
 )
@@ -22,19 +22,14 @@ func main() {
 	}
 	defer conn.Pool.Close()
 
+	a := &handlers.App{
+		DB: conn,
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	a := &api.App{
-		DB:          conn,
-		RequestChan: make(chan api.Job, 10000),
-	}
-
-	for i := 0; i < 100; i++ {
-		api.HttpRequestWorkers(ctx, a)
-	}
-
-	http.HandleFunc("/", api.HomeHandler)
+	http.HandleFunc("/", handlers.HomeHandler)
 	http.HandleFunc("/create-monitor", a.CreateMonitorhandler)
 	http.HandleFunc("/update-monitor", a.UpdateMonitorHandler)
 

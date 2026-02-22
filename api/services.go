@@ -9,38 +9,6 @@ import (
 	"github.com/dhruvthak3r/Probe/config"
 )
 
-func HttpRequestWorkers(ctx context.Context, a *App) {
-	go func() {
-		for {
-			select {
-			case req, ok := <-a.RequestChan:
-				if !ok {
-					fmt.Println("Request channel closed, stopping workers")
-					return
-				}
-
-				switch req.JobType {
-				case "CreateMonitor":
-					payload := req.Payload.(CreateMonitorPayload)
-					fmt.Println("inserting into db")
-					if err := InsertMonitorToDB(ctx, a.DB, payload); err != nil {
-						fmt.Printf("Error inserting monitor to DB: %v\n", err)
-					}
-
-				case "UpdateMonitor":
-					payload := req.Payload.(UpdateMonitorPayload)
-					if err := UpdateMonitorInDB(ctx, a.DB, payload); err != nil {
-						fmt.Printf("Error updating monitor in DB: %v\n", err)
-					}
-				}
-			case <-ctx.Done():
-				fmt.Println("Context cancelled, stopping workers")
-				return
-			}
-		}
-	}()
-}
-
 func InsertMonitorToDB(ctx context.Context, db *config.DB, payload CreateMonitorPayload) error {
 
 	tx, err := db.Pool.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: false})

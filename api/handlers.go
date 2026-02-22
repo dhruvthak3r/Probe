@@ -2,19 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	db "github.com/dhruvthak3r/Probe/config"
 )
 
-type Job struct {
-	JobType string
-	Payload interface{}
-}
-
 type App struct {
-	DB          *db.DB
-	RequestChan chan Job
+	DB *db.DB
 }
 
 type CreateMonitorPayload struct {
@@ -61,21 +56,18 @@ func (a *App) CreateMonitorhandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job := Job{
-		JobType: "CreateMonitor",
-		Payload: payload,
+	if err := InsertMonitorToDB(r.Context(), a.DB, payload); err != nil {
+		log.Printf("error inserting to db %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 
-	select {
-	case a.RequestChan <- job:
-		w.WriteHeader(http.StatusAccepted)
-		w.Write([]byte("Monitor creation request accepted"))
-	case <-r.Context().Done():
-		http.Error(w, "Request cancelled", http.StatusRequestTimeout)
-	default:
-		http.Error(w, "Server is busy, try again later", http.StatusServiceUnavailable)
-	}
+	log.Println("inserting to db")
 
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "monitor created successfully",
+	})
 }
 
 func (a *App) UpdateMonitorHandler(w http.ResponseWriter, r *http.Request) {
@@ -109,19 +101,17 @@ func (a *App) UpdateMonitorHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job := Job{
-		JobType: "UpdateMonitor",
-		Payload: payload,
+	if err := UpdateMonitorInDB(r.Context(), a.DB, payload); err != nil {
+		log.Printf("error updating monitor %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 
-	select {
-	case a.RequestChan <- job:
-		w.WriteHeader(http.StatusAccepted)
-		w.Write([]byte("Monitor update request accepted"))
-	case <-r.Context().Done():
-		http.Error(w, "Request cancelled", http.StatusRequestTimeout)
-	default:
-		http.Error(w, "Server is busy, try again later", http.StatusServiceUnavailable)
-	}
+	log.Println("updating to db")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "monitor updated successfully",
+	})
 
 }
