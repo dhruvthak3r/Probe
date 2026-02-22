@@ -32,6 +32,7 @@ func main() {
 	http.HandleFunc("/", handlers.HomeHandler)
 	http.HandleFunc("/create-monitor", a.CreateMonitorhandler)
 	http.HandleFunc("/update-monitor", a.UpdateMonitorHandler)
+	http.HandleFunc("/get-all-monitors", a.GetAllMonitorsHandler)
 
 	srv := &http.Server{Addr: ":8080", Handler: nil}
 	go func() {

@@ -115,3 +115,23 @@ func (a *App) UpdateMonitorHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 }
+
+func (a *App) GetAllMonitorsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusBadRequest)
+		return
+	}
+
+	monitors, err := GetAllMonitors(r.Context(), a.DB)
+	if err != nil {
+		log.Printf("error fetching monitors: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"monitors": monitors,
+	})
+}

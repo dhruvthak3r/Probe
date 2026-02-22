@@ -9,6 +9,11 @@ import (
 	"github.com/dhruvthak3r/Probe/config"
 )
 
+type MonitorSummary struct {
+	MonitorID   int    `json:"monitor_id"`
+	MonitorName string `json:"monitor_name"`
+}
+
 func InsertMonitorToDB(ctx context.Context, db *config.DB, payload CreateMonitorPayload) error {
 
 	tx, err := db.Pool.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: false})
@@ -216,4 +221,35 @@ func ReplaceAcceptedStatusCodes(ctx context.Context, tx *sql.Tx, monitorID int64
 	}
 
 	return InsertAcceptedStatusCodes(ctx, tx, monitorID, codes)
+}
+
+func GetAllMonitors(ctx context.Context, db *config.DB) ([]MonitorSummary, error) {
+	query := `SELECT monitor_id, monitor_name FROM monitor LIMIT 10`
+
+	rows, err := db.Pool.QueryContext(ctx, query)
+
+	if err != nil {
+		return nil, fmt.Errorf("error getting all monitors: %v", err)
+
+	}
+	defer rows.Close()
+
+	monitors := make([]MonitorSummary, 0, 16)
+
+	for rows.Next() {
+		var monitor MonitorSummary
+
+		err := rows.Scan(&monitor.MonitorID, &monitor.MonitorName)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning rows: %v", err)
+		}
+
+		monitors = append(monitors, monitor)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %v", err)
+	}
+
+	return monitors, nil
 }
