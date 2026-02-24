@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dhruvthak3r/Probe/config"
 )
@@ -12,6 +13,22 @@ import (
 type MonitorSummary struct {
 	MonitorID   int    `json:"monitor_id"`
 	MonitorName string `json:"monitor_name"`
+}
+
+type MonitorResult struct {
+	MonitorID        int     `json:"monitor_id"`
+	StatusCode       int     `json:"status_code"`
+	Status           string  `json:"status"`
+	DNSResponseTime  int64   `json:"dns_response_time"`
+	ConnectionTime   int64   `json:"connection_time"`
+	TLSHandshakeTime int64   `json:"tls_handshake_time"`
+	ResolvedIP       string  `json:"resolved_ip"`
+	FirstByteTime    int64   `json:"first_byte_time"`
+	DownloadTime     int64   `json:"download_time"`
+	ResponseTime     int64   `json:"response_time"`
+	Throughput       float64 `json:"throughput"`
+	Reason           string  `json:"reason"`
+	CreatedAt        string  `json:"created_at"`
 }
 
 func InsertMonitorToDB(ctx context.Context, db *config.DB, payload CreateMonitorPayload) error {
@@ -252,4 +269,121 @@ func GetAllMonitors(ctx context.Context, db *config.DB) ([]MonitorSummary, error
 	}
 
 	return monitors, nil
+}
+
+func GetLatestResultsForMonitor(ctx context.Context, db *config.DB, monitorID int, limit int) ([]MonitorResult, error) {
+	query := `
+		SELECT
+			monitor_id,
+			status_code,
+			status,
+			dns_response_time,
+			connection_time,
+			tls_handshake_time,
+			resolved_ip,
+			first_byte_time,
+			download_time,
+			response_time,
+			throughput,
+			reason,
+			created_at
+		FROM results
+		WHERE monitor_id = ?
+		ORDER BY result_id DESC
+		LIMIT ?
+	`
+
+	rows, err := db.Pool.QueryContext(ctx, query, monitorID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("error getting latest results for monitor_id=%d: %v", monitorID, err)
+	}
+	defer rows.Close()
+
+	results := make([]MonitorResult, 0, limit)
+	for rows.Next() {
+		var result MonitorResult
+		if err := rows.Scan(
+			&result.MonitorID,
+			&result.StatusCode,
+			&result.Status,
+			&result.DNSResponseTime,
+			&result.ConnectionTime,
+			&result.TLSHandshakeTime,
+			&result.ResolvedIP,
+			&result.FirstByteTime,
+			&result.DownloadTime,
+			&result.ResponseTime,
+			&result.Throughput,
+			&result.Reason,
+			&result.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("error scanning latest monitor result rows: %v", err)
+		}
+		results = append(results, result)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating latest monitor results rows: %v", err)
+	}
+
+	return results, nil
+}
+
+func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID int, fromTS time.Time, toTS time.Time, limit int) ([]MonitorResult, error) {
+	query := `
+		SELECT
+			monitor_id,
+			status_code,
+			status,
+			dns_response_time,
+			connection_time,
+			tls_handshake_time,
+			resolved_ip,
+			first_byte_time,
+			download_time,
+			response_time,
+			throughput,
+			reason,
+			created_at
+		FROM results
+		WHERE monitor_id = ?
+		  AND created_at BETWEEN ? AND ?
+		ORDER BY result_id DESC
+		LIMIT ?
+	`
+
+	rows, err := db.Pool.QueryContext(ctx, query, monitorID, fromTS, toTS, limit)
+	if err != nil {
+		return nil, fmt.Errorf("error getting results between timestamps for monitor_id=%d: %v", monitorID, err)
+	}
+	defer rows.Close()
+
+	results := make([]MonitorResult, 0, limit)
+	for rows.Next() {
+		var result MonitorResult
+		if err := rows.Scan(
+			&result.MonitorID,
+			&result.StatusCode,
+			&result.Status,
+			&result.DNSResponseTime,
+			&result.ConnectionTime,
+			&result.TLSHandshakeTime,
+			&result.ResolvedIP,
+			&result.FirstByteTime,
+			&result.DownloadTime,
+			&result.ResponseTime,
+			&result.Throughput,
+			&result.Reason,
+			&result.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("error scanning results between timestamps: %v", err)
+		}
+		results = append(results, result)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating results between timestamps: %v", err)
+	}
+
+	return results, nil
 }

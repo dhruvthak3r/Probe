@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 
 	db "github.com/dhruvthak3r/Probe/config"
 )
@@ -133,5 +135,145 @@ func (a *App) GetAllMonitorsHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
 		"monitors": monitors,
+	})
+}
+
+func (a *App) GetLatestResultsForMonitorHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	monitorIDStr := r.URL.Query().Get("monitor_id")
+	if monitorIDStr == "" {
+		http.Error(w, "monitor_id is required", http.StatusBadRequest)
+		return
+	}
+
+	monitorID, err := strconv.Atoi(monitorIDStr)
+	if err != nil || monitorID <= 0 {
+		http.Error(w, "monitor_id must be a positive integer", http.StatusBadRequest)
+		return
+	}
+
+	limit := 10
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil || parsedLimit <= 0 {
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			return
+		}
+
+		limit = parsedLimit
+	}
+
+	results, err := GetLatestResultsForMonitor(r.Context(), a.DB, monitorID, limit)
+	if err != nil {
+		log.Printf("error fetching latest results for monitor_id=%d: %v", monitorID, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"monitor_id": monitorID,
+		"count":      len(results),
+		"results":    results,
+	})
+}
+
+func parseTimestamp(ts string) (time.Time, error) {
+	unixTS, err := strconv.ParseInt(ts, 10, 64)
+	if err == nil {
+		return time.Unix(unixTS, 0).UTC(), nil
+	}
+
+	t, err := time.Parse(time.RFC3339, ts)
+	if err == nil {
+		return t.UTC(), nil
+	}
+
+	t, err = time.Parse(time.RFC3339Nano, ts)
+	if err == nil {
+		return t.UTC(), nil
+	}
+
+	t, err = time.Parse("2006-01-02 15:04:05", ts)
+	if err == nil {
+		return t.UTC(), nil
+	}
+
+	return time.Time{}, err
+}
+
+func (a *App) GetResultsBetweenTimestampsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	monitorIDStr := r.URL.Query().Get("monitor_id")
+	if monitorIDStr == "" {
+		http.Error(w, "monitor_id is required", http.StatusBadRequest)
+		return
+	}
+	monitorID, err := strconv.Atoi(monitorIDStr)
+	if err != nil || monitorID <= 0 {
+		http.Error(w, "monitor_id must be a positive integer", http.StatusBadRequest)
+		return
+	}
+
+	fromTSStr := r.URL.Query().Get("from_ts")
+	toTSStr := r.URL.Query().Get("to_ts")
+	if fromTSStr == "" || toTSStr == "" {
+		http.Error(w, "from_ts and to_ts are required", http.StatusBadRequest)
+		return
+	}
+
+	fromTS, err := parseTimestamp(fromTSStr)
+	if err != nil {
+		http.Error(w, "from_ts must be unix seconds or RFC3339", http.StatusBadRequest)
+		return
+	}
+
+	toTS, err := parseTimestamp(toTSStr)
+	if err != nil {
+		http.Error(w, "to_ts must be unix seconds or RFC3339", http.StatusBadRequest)
+		return
+	}
+
+	if fromTS.After(toTS) {
+		http.Error(w, "from_ts must be before or equal to to_ts", http.StatusBadRequest)
+		return
+	}
+
+	limit := 10
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil || parsedLimit <= 0 {
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		limit = parsedLimit
+	}
+
+	results, err := GetResultsBetweenTimestamps(r.Context(), a.DB, monitorID, fromTS, toTS, limit)
+	if err != nil {
+		log.Printf("error fetching results for monitor_id=%d from %s to %s: %v", monitorID, fromTS.UTC().Format(time.RFC3339), toTS.UTC().Format(time.RFC3339), err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"monitor_id": monitorID,
+		"from_ts":    fromTS.UTC().Format(time.RFC3339),
+		"to_ts":      toTS.UTC().Format(time.RFC3339),
+		"count":      len(results),
+		"results":    results,
 	})
 }
