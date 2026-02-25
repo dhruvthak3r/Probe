@@ -32,9 +32,10 @@ func main() {
 	http.HandleFunc("/", handlers.HomeHandler)
 	http.HandleFunc("/create-monitor", a.CreateMonitorhandler)
 	http.HandleFunc("/update-monitor", a.UpdateMonitorHandler)
+	http.HandleFunc("/suspend-monitor", a.SuspendMonitorHandler)
 	http.HandleFunc("/get-all-monitors", a.GetAllMonitorsHandler)
-	http.HandleFunc("/id/get-latest-results/limit", a.GetLatestResultsForMonitorHandler)
-	http.HandleFunc("/id/results/from_ts/to_ts/limit", a.GetResultsBetweenTimestampsHandler)
+	http.HandleFunc("/get-results", a.GetResultsBetweenTimestampsHandler)
+	http.HandleFunc("/get-metrics", a.GetMetricsBetweenTimestampsHandler)
 
 	srv := &http.Server{Addr: ":8080", Handler: nil}
 	go func() {
