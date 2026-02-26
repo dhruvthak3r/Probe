@@ -3,6 +3,7 @@ package config
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
@@ -39,6 +40,19 @@ func (c *DBConfig) DSN() string {
 		c.Host,
 		c.Port,
 		c.Name,
+	)
+}
+
+func MigrationURL() string {
+	cfg := getDBConfig()
+
+	return fmt.Sprintf(
+		"mysql://%s:%s@tcp(%s:%s)/%s?multiStatements=true",
+		cfg.User,
+		url.QueryEscape(cfg.Password),
+		cfg.Host,
+		cfg.Port,
+		cfg.Name,
 	)
 }
 

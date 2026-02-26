@@ -12,6 +12,8 @@ import (
 	handlers "github.com/dhruvthak3r/Probe/api"
 	db "github.com/dhruvthak3r/Probe/config"
 	"github.com/joho/godotenv"
+
+	"github.com/dhruvthak3r/Probe/migrations"
 )
 
 func main() {
@@ -21,6 +23,8 @@ func main() {
 		panic(err)
 	}
 	defer conn.Pool.Close()
+
+	migrations.Run(db.MigrationURL())
 
 	a := &handlers.App{
 		DB: conn,
