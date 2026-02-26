@@ -78,7 +78,7 @@ func main() {
 
 	s.Start()
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 10; i++ {
 		g.Go(func() error {
 			return monitorq.PollUrls(ctx, conn, publisher)
 		})

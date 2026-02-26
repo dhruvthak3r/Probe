@@ -50,7 +50,7 @@ func NewMonitorQueue() *MonitorQueue {
 
 func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB) error {
 
-	tx, err := db.Pool.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: true})
+	tx, err := db.Pool.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: false})
 
 	if err != nil {
 		return fmt.Errorf("error starting transaction: %v\n", err)
@@ -116,7 +116,6 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 
 		select {
 		case mq.UrlsToPoll <- m:
-			fmt.Println("monitor enqueued from db")
 		case <-ctx.Done():
 			return fmt.Errorf("oops error with enqueuing: %v\n", ctx.Err())
 		}

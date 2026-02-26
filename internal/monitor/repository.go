@@ -106,7 +106,9 @@ func GetAcceptedStatusCodeForMonitor(ctx context.Context, db *db.DB, ids []inter
 func UpdateMonitorStatus(ctx context.Context, tx *sql.Tx, placeholders []string, ids []interface{}) error {
 	updateq := fmt.Sprintf(`
         UPDATE monitor
-        SET status = "running"
+		set last_run_at = NOW(),
+        next_run_at = DATE_ADD(NOW(), INTERVAL frequency_seconds SECOND),
+        status = 'running'
         WHERE monitor_id IN (%s)
         `, strings.Join(placeholders, ","))
 
@@ -184,14 +186,13 @@ func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}
 func SetStatusToIdle(ctx context.Context, db *db.DB, m *Monitor) error {
 	update := `
         UPDATE monitor
-		set last_run_at = NOW(),
-        next_run_at = DATE_ADD(NOW(), INTERVAL ? SECOND),
-            status = 'idle'
+        SET status = 'idle'
         WHERE monitor_id = ?`
 
-	_, err := db.Pool.ExecContext(ctx, update, m.FrequencySecs, m.ID)
+	_, err := db.Pool.ExecContext(ctx, update, m.ID)
 	if err != nil {
 		return fmt.Errorf("error updating monitor after poll: %w", err)
 	}
+
 	return nil
 }
