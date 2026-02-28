@@ -1,7 +1,6 @@
 .env
 mock_data.sql
 probe-results.log
-api.exe
-scheduler.exe
+probe.exe
 internal.exe
 Todo.md
