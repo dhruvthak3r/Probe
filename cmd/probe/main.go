@@ -67,7 +67,7 @@ func main() {
 		log.Fatalf("error creating scheduler: %v", err)
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 1; i++ {
 		_, jErr := s.NewJob(
 			gocron.DurationJob(5*time.Second),
 			gocron.NewTask(monitorq.RunScheduler(ctx, conn)),
@@ -79,13 +79,13 @@ func main() {
 	s.Start()
 	defer s.Shutdown()
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 3; i++ {
 		g.Go(func() error {
 			return monitorq.PollUrls(ctx, conn, publisher)
 		})
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 3; i++ {
 		g.Go(func() error {
 			return consumer.ConsumeFromQueue(ctx, conn)
 		})
