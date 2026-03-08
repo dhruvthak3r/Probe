@@ -11,6 +11,7 @@ import (
 	"time"
 
 	handlers "github.com/dhruvthak3r/Probe/api"
+	middleware "github.com/dhruvthak3r/Probe/api"
 	"github.com/dhruvthak3r/Probe/config"
 	db "github.com/dhruvthak3r/Probe/config"
 	"github.com/dhruvthak3r/Probe/internal/monitor"
@@ -101,7 +102,7 @@ func main() {
 	mux.HandleFunc("/get-results", a.GetResultsBetweenTimestampsHandler)
 	mux.HandleFunc("/get-metrics", a.GetMetricsBetweenTimestampsHandler)
 
-	srv := &http.Server{Addr: ":8080", Handler: mux}
+	srv := &http.Server{Addr: ":8080", Handler: middleware.EnableCORS(mux)}
 
 	g.Go(func() error {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
