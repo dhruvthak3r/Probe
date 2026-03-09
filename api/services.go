@@ -14,6 +14,7 @@ import (
 type MonitorSummary struct {
 	MonitorID   int    `json:"monitor_id"`
 	MonitorName string `json:"monitor_name"`
+	Url         string `json:"url"`
 }
 
 type MonitorResult struct {
@@ -278,7 +279,7 @@ func ReplaceAcceptedStatusCodes(ctx context.Context, tx *sql.Tx, monitorID int64
 }
 
 func GetAllMonitors(ctx context.Context, db *config.DB) ([]MonitorSummary, error) {
-	query := `SELECT monitor_id, monitor_name FROM monitor LIMIT 10`
+	query := `SELECT monitor_id, monitor_name, url FROM monitor`
 
 	rows, err := db.Pool.QueryContext(ctx, query)
 
@@ -293,7 +294,7 @@ func GetAllMonitors(ctx context.Context, db *config.DB) ([]MonitorSummary, error
 	for rows.Next() {
 		var monitor MonitorSummary
 
-		err := rows.Scan(&monitor.MonitorID, &monitor.MonitorName)
+		err := rows.Scan(&monitor.MonitorID, &monitor.MonitorName, &monitor.Url)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning rows: %v", err)
 		}
