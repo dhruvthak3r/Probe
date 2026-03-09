@@ -123,8 +123,7 @@ func GetNextMonitors(ctx context.Context, tx *sql.Tx) ([]*Monitor, []interface{}
 
 	query := `SELECT monitor_id, url, frequency_seconds, last_run_at, next_run_at, response_format, request_body, http_method, connection_timeout
 	          FROM monitor
-              WHERE is_active = 1 
-              AND is_mock = 1 
+              WHERE is_active = 1
               AND (
                 (status = 'idle' AND next_run_at <= NOW())
                 OR
