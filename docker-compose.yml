@@ -31,5 +31,14 @@ services:
     ports:
       - "8181:8080"
 
+  probe-ui:
+    image: probe-ui
+    container_name: probe-ui
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "3000:80"
+
 volumes:
   mysql_data:
