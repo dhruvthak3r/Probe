@@ -20,7 +20,7 @@ services:
       - "15672:15672"
 
   app:
-    image: probe
+    image: dhruvthak3r/probe
     container_name: probe
     restart: unless-stopped
     env_file:
@@ -32,7 +32,7 @@ services:
       - "8181:8080"
 
   probe-ui:
-    image: probe-ui
+    image: dhruvthak3r/probe-ui
     container_name: probe-ui
     restart: unless-stopped
     depends_on:
