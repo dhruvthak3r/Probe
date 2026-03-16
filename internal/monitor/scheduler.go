@@ -63,8 +63,6 @@ func (mq *MonitorQueue) EnqueueNextMonitorsToChan(ctx context.Context, db *db.DB
 		return fmt.Errorf("error querying next monitors :%v\n", err)
 	}
 
-	fmt.Printf("no of monitor enqueued %d\n", len(monitors))
-
 	if len(ids) == 0 {
 		return tx.Commit()
 	}

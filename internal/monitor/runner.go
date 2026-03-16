@@ -13,7 +13,6 @@ func (mq *MonitorQueue) RunScheduler(
 ) func() {
 
 	return func() {
-		fmt.Println("scheduler running")
 
 		if err := mq.EnqueueNextMonitorsToChan(ctx, db); err != nil {
 			fmt.Printf("scheduler error: %v\n", err)

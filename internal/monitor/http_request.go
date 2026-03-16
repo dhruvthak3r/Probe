@@ -20,13 +20,14 @@ func GetResult(m Monitor) (*Result, error) {
 		connectStart, connectEnd time.Time
 		tlsStart, tlsEnd         time.Time
 		firstByte                time.Time
+		wroteRequest             time.Time
 		resolvedIP               string
 		statusCode               int
 		bytesRead                int64
 		throughput               float64
 	)
 
-	trace := BuildTrace(&dnsStart, &dnsEnd, &resolvedIP, &connectStart, &connectEnd, &tlsStart, &tlsEnd, &firstByte)
+	trace := BuildTrace(&dnsStart, &dnsEnd, &resolvedIP, &connectStart, &connectEnd, &tlsStart, &tlsEnd, &wroteRequest, &firstByte)
 
 	req, err := Buildreq(m, trace)
 	if err != nil {
@@ -55,7 +56,7 @@ func GetResult(m Monitor) (*Result, error) {
 	}
 	defer resp.Body.Close()
 
-	bytesRead, err = io.CopyN(io.Discard, resp.Body, 1024)
+	bytesRead, err = io.Copy(io.Discard, resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading the response body %v", err)
 	}
@@ -103,7 +104,7 @@ func GetResult(m Monitor) (*Result, error) {
 		ConnectionTime:   durationOrZero(connectStart, connectEnd),
 		TLSHandshakeTime: durationOrZero(tlsStart, tlsEnd),
 
-		FirstByteTime: firstByte.Sub(start),
+		FirstByteTime: firstByte.Sub(wroteRequest),
 		DownloadTime:  downloadTime,
 		ResponseTime:  end.Sub(start),
 
@@ -187,7 +188,7 @@ func BuildClient(m Monitor) *http.Client {
 	return &http.Client{Transport: transport}
 }
 
-func BuildTrace(dnsStart *time.Time, dnsEnd *time.Time, resolvedIP *string, connectStart *time.Time, connectEnd *time.Time, tlsStart *time.Time, tlsEnd *time.Time, firstByte *time.Time) *httptrace.ClientTrace {
+func BuildTrace(dnsStart *time.Time, dnsEnd *time.Time, resolvedIP *string, connectStart *time.Time, connectEnd *time.Time, tlsStart *time.Time, tlsEnd *time.Time, wroteRequest *time.Time, firstByte *time.Time) *httptrace.ClientTrace {
 	return &httptrace.ClientTrace{
 		DNSStart: func(httptrace.DNSStartInfo) {
 			*dnsStart = time.Now()
@@ -219,6 +220,10 @@ func BuildTrace(dnsStart *time.Time, dnsEnd *time.Time, resolvedIP *string, conn
 		},
 		TLSHandshakeDone: func(tls.ConnectionState, error) {
 			*tlsEnd = time.Now()
+		},
+
+		WroteRequest: func(wri httptrace.WroteRequestInfo) {
+			*wroteRequest = time.Now()
 		},
 
 		GotFirstResponseByte: func() {
