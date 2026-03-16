@@ -309,7 +309,7 @@ func GetAllMonitors(ctx context.Context, db *config.DB) ([]MonitorSummary, error
 	return monitors, nil
 }
 
-func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID int, fromTS time.Time, toTS time.Time, limit int) ([]MonitorResult, error) {
+func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID int, fromTS time.Time, toTS time.Time) ([]MonitorResult, error) {
 	query := `
 		SELECT
 			monitor_id,
@@ -329,16 +329,15 @@ func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID i
 		WHERE monitor_id = ?
 		  AND created_at BETWEEN ? AND ?
 		ORDER BY created_at DESC
-		LIMIT ?
 	`
 
-	rows, err := db.Pool.QueryContext(ctx, query, monitorID, fromTS, toTS, limit)
+	rows, err := db.Pool.QueryContext(ctx, query, monitorID, fromTS, toTS)
 	if err != nil {
 		return nil, fmt.Errorf("error getting results between timestamps for monitor_id=%d: %v", monitorID, err)
 	}
 	defer rows.Close()
 
-	results := make([]MonitorResult, 0, limit)
+	results := make([]MonitorResult, 0)
 	for rows.Next() {
 		var result MonitorResult
 		if err := rows.Scan(
@@ -368,7 +367,7 @@ func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID i
 	return results, nil
 }
 
-func GetMetricsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID int, fromTS time.Time, toTS time.Time, limit int) ([]MonitorMetrics, error) {
+func GetMetricsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID int, fromTS time.Time, toTS time.Time) ([]MonitorMetrics, error) {
 	query := `
 		SELECT
 			monitor_id,
@@ -384,16 +383,15 @@ func GetMetricsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID i
 		WHERE monitor_id = ?
 		  AND created_at BETWEEN ? AND ?
 		ORDER BY result_id DESC
-		LIMIT ?
 	`
 
-	rows, err := db.Pool.QueryContext(ctx, query, monitorID, fromTS, toTS, limit)
+	rows, err := db.Pool.QueryContext(ctx, query, monitorID, fromTS, toTS)
 	if err != nil {
 		return nil, fmt.Errorf("error getting results between timestamps for monitor_id=%d: %v", monitorID, err)
 	}
 	defer rows.Close()
 
-	metrics := make([]MonitorMetrics, 0, limit)
+	metrics := make([]MonitorMetrics, 0)
 	for rows.Next() {
 		var result MonitorMetrics
 		if err := rows.Scan(

@@ -179,18 +179,7 @@ func (a *App) GetResultsBetweenTimestampsHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	limit := 10
-	limitStr := r.URL.Query().Get("limit")
-	if limitStr != "" {
-		parsedLimit, err := strconv.Atoi(limitStr)
-		if err != nil || parsedLimit <= 0 {
-			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
-			return
-		}
-		limit = parsedLimit
-	}
-
-	results, err := GetResultsBetweenTimestamps(r.Context(), a.DB, monitorID, fromTS, toTS, limit)
+	results, err := GetResultsBetweenTimestamps(r.Context(), a.DB, monitorID, fromTS, toTS)
 	if err != nil {
 		log.Printf("error fetching results for monitor_id=%d from %s to %s: %v", monitorID, fromTS.UTC().Format(time.RFC3339), toTS.UTC().Format(time.RFC3339), err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -249,18 +238,7 @@ func (a *App) GetMetricsBetweenTimestampsHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	limit := 10
-	limitStr := r.URL.Query().Get("limit")
-	if limitStr != "" {
-		parsedLimit, err := strconv.Atoi(limitStr)
-		if err != nil || parsedLimit <= 0 {
-			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
-			return
-		}
-		limit = parsedLimit
-	}
-
-	metrics, err := GetMetricsBetweenTimestamps(r.Context(), a.DB, monitorID, fromTS, toTS, limit)
+	metrics, err := GetMetricsBetweenTimestamps(r.Context(), a.DB, monitorID, fromTS, toTS)
 	if err != nil {
 		log.Printf("error fetching metrics for monitor_id=%d from %s to %s: %v", monitorID, fromTS.UTC().Format(time.RFC3339), toTS.UTC().Format(time.RFC3339), err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
