@@ -90,7 +90,7 @@ func GetResult(m Monitor) (*Result, error) {
 	downloadTime := end.Sub(firstByte)
 
 	if downloadTime > 0 {
-		throughput = float64(bytesRead) / downloadTime.Seconds()
+		throughput = (float64(bytesRead) / downloadTime.Seconds()) / 1024
 	}
 
 	return &Result{
