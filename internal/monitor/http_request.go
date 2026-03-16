@@ -56,7 +56,7 @@ func GetResult(m Monitor) (*Result, error) {
 	}
 	defer resp.Body.Close()
 
-	bytesRead, err = io.Copy(io.Discard, resp.Body)
+	bytesRead, err = io.CopyN(io.Discard, resp.Body, 1024)
 	if err != nil {
 		return nil, fmt.Errorf("error reading the response body %v", err)
 	}
