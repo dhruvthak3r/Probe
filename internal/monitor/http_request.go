@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptrace"
@@ -90,7 +91,7 @@ func GetResult(m Monitor) (*Result, error) {
 	downloadTime := end.Sub(firstByte)
 
 	if downloadTime > 0 {
-		throughput = (float64(bytesRead) / downloadTime.Seconds()) / 1024
+		throughput = math.Round((float64(bytesRead)/downloadTime.Seconds())/1024*100) / 100
 	}
 
 	return &Result{
