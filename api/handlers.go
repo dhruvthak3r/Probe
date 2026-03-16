@@ -179,21 +179,51 @@ func (a *App) GetResultsBetweenTimestampsHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	results, err := GetResultsBetweenTimestamps(r.Context(), a.DB, monitorID, fromTS, toTS)
+	limit := 20
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil || parsedLimit <= 0 {
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		limit = parsedLimit
+	}
+
+	var cursor int64
+	cursorStr := r.URL.Query().Get("cursor")
+	if cursorStr != "" {
+		parsedCursor, err := strconv.ParseInt(cursorStr, 10, 64)
+		if err != nil || parsedCursor <= 0 {
+			http.Error(w, "cursor must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		cursor = parsedCursor
+	}
+
+	results, nextCursor, err := GetResultsBetweenTimestamps(r.Context(), a.DB, monitorID, fromTS, toTS, cursor, limit)
 	if err != nil {
 		log.Printf("error fetching results for monitor_id=%d from %s to %s: %v", monitorID, fromTS.UTC().Format(time.RFC3339), toTS.UTC().Format(time.RFC3339), err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
+	var nextCursorValue any
+	if nextCursor != nil {
+		nextCursorValue = *nextCursor
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
-		"monitor_id": monitorID,
-		"from_ts":    fromTS.UTC().Format(time.RFC3339),
-		"to_ts":      toTS.UTC().Format(time.RFC3339),
-		"count":      len(results),
-		"results":    results,
+		"monitor_id":  monitorID,
+		"from_ts":     fromTS.UTC().Format(time.RFC3339),
+		"to_ts":       toTS.UTC().Format(time.RFC3339),
+		"limit":       limit,
+		"cursor":      cursorStr,
+		"next_cursor": nextCursorValue,
+		"count":       len(results),
+		"results":     results,
 	})
 }
 

@@ -18,6 +18,7 @@ type MonitorSummary struct {
 }
 
 type MonitorResult struct {
+	ResultID         int64   `json:"result_id"`
 	MonitorID        int     `json:"monitor_id"`
 	StatusCode       int     `json:"status_code"`
 	Status           string  `json:"status"`
@@ -309,9 +310,14 @@ func GetAllMonitors(ctx context.Context, db *config.DB) ([]MonitorSummary, error
 	return monitors, nil
 }
 
-func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID int, fromTS time.Time, toTS time.Time) ([]MonitorResult, error) {
+func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID int, fromTS time.Time, toTS time.Time, cursor int64, limit int) ([]MonitorResult, *int64, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
 	query := `
 		SELECT
+			result_id,
 			monitor_id,
 			status_code,
 			status,
@@ -328,12 +334,21 @@ func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID i
 		FROM results
 		WHERE monitor_id = ?
 		  AND created_at BETWEEN ? AND ?
-		ORDER BY created_at DESC
 	`
+	args := []interface{}{monitorID, fromTS, toTS}
+	if cursor > 0 {
+		query += ` AND result_id < ?`
+		args = append(args, cursor)
+	}
+	query += `
+		ORDER BY result_id DESC
+		LIMIT ?
+	`
+	args = append(args, limit+1)
 
-	rows, err := db.Pool.QueryContext(ctx, query, monitorID, fromTS, toTS)
+	rows, err := db.Pool.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("error getting results between timestamps for monitor_id=%d: %v", monitorID, err)
+		return nil, nil, fmt.Errorf("error getting results between timestamps for monitor_id=%d: %v", monitorID, err)
 	}
 	defer rows.Close()
 
@@ -341,6 +356,7 @@ func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID i
 	for rows.Next() {
 		var result MonitorResult
 		if err := rows.Scan(
+			&result.ResultID,
 			&result.MonitorID,
 			&result.StatusCode,
 			&result.Status,
@@ -355,16 +371,23 @@ func GetResultsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID i
 			&result.Reason,
 			&result.CreatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("error scanning results between timestamps: %v", err)
+			return nil, nil, fmt.Errorf("error scanning results between timestamps: %v", err)
 		}
 		results = append(results, result)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating results between timestamps: %v", err)
+		return nil, nil, fmt.Errorf("error iterating results between timestamps: %v", err)
 	}
 
-	return results, nil
+	var nextCursor *int64
+	if len(results) > limit {
+		cursorValue := results[limit-1].ResultID
+		nextCursor = &cursorValue
+		results = results[:limit]
+	}
+
+	return results, nextCursor, nil
 }
 
 func GetMetricsBetweenTimestamps(ctx context.Context, db *config.DB, monitorID int, fromTS time.Time, toTS time.Time) ([]MonitorMetrics, error) {
