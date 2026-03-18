@@ -1,6 +1,3 @@
 .env
-mock_data.sql
-probe-results.log
 probe.exe
 internal.exe
-Todo.md
